@@ -7,12 +7,10 @@ if [ ! -d /data/mysql ]; then
   echo 'Finished mysql_install_db'
 
   tempSqlFile='/tmp/mysql-setup.sql'
-  cat > "$tempSqlFile" <<-EOF
-    DELETE FROM mysql.user;
-    CREATE USER 'root'@'%' IDENTIFIED BY '${MYSQL_ROOT_PASSWORD}';
-    GRANT ALL ON *.* TO 'root'@'%' IDENTIFIED BY '${MYSQL_ROOT_PASSWORD}';
-    DROP DATABASE IF EXISTS test ;
-  EOF
+  echo "DELETE FROM mysql.user; \
+    CREATE USER 'root'@'%' IDENTIFIED BY '${MYSQL_ROOT_PASSWORD}'; \
+    GRANT ALL ON *.* TO 'root'@'%' IDENTIFIED BY '${MYSQL_ROOT_PASSWORD}'; \
+    DROP DATABASE IF EXISTS test;" > "$tempSqlFile"
 
   # Create User & Database
   if [ "$KEYSTONE_DBPASS" ]; then
