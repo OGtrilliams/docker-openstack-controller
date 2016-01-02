@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Setup for MySQL
-if [ ! -d /data/mysql ]; then
+if [ ! -d /data/mysql/mysql ]; then
   echo 'Running mysql_install_db ...'
   mysql_install_db
   echo 'Finished mysql_install_db'
