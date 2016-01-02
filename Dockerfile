@@ -20,7 +20,7 @@ RUN \
     nova-cert nova-conductor nova-consoleauth nova-novncproxy nova-scheduler python-novaclient apache2 \
     memcached libapache2-mod-wsgi openstack-dashboard neutron-server neutron-plugin-ml2 python-neutronclient && \
   sed -Ei 's/^(bind-address|log)/#&/' /etc/mysql/my.cnf && \
-  sed -i "s/^datadir.*/datadir = \/data/mysql" /etc/mysql/my.cnf
+  sed -i "s/^datadir.*/datadir = \/data\/mysql/" /etc/mysql/my.cnf
 
 VOLUME ["/data"]
 
