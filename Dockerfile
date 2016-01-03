@@ -2,7 +2,28 @@ FROM ubuntu:14.04
 
 MAINTAINER EnnWeb Cloud <cloud@ennweb.com>
 
-ENV MYSQL_ROOT_PASSWORD openstack
+ENV CONTROLLER_HOST controller
+ENV HA_MODE L3_HA
+ENV TIME_ZONE Europe/London
+ENV ADMIN_TOKEN ADMIN
+ENV REGION_NAME RegionOne
+ENV RABBIT_PASS rabbitpass
+ENV MYSQL_ROOT_PASSWORD mysqlpass
+ENV KEYSTONE_DBPASS openstack
+ENV KEYSTONE_PASS keystonepass
+ENV GLANCE_DBPASS openstack
+ENV GLANCE_PASS glancepass
+ENV NOVA_DBPASS openstack
+ENV NOVA_PASS novapass
+ENV NEUTRON_DBPASS openstack
+ENV NEUTRON_PASS neutronpass
+ENV CINDER_DBPASS openstack
+ENV CINDER_PASS cinderpass
+ENV ADMIN_TENANT_NAME service
+ENV ADMIN_EMAIL admin@localhost
+ENV ADMIN_PASS adminpass
+ENV DEMO_EMAIL demo@localhost
+ENV DEMO_PASS demopass
 
 RUN \
   { \
@@ -19,6 +40,7 @@ RUN \
   apt-get install -y mysql-server python-mysqldb rabbitmq-server keystone python-keyring glance nova-api \
     nova-cert nova-conductor nova-consoleauth nova-novncproxy nova-scheduler python-novaclient apache2 \
     memcached libapache2-mod-wsgi openstack-dashboard neutron-server neutron-plugin-ml2 python-neutronclient && \
+  apt-get remove --auto-remove openstack-dashboard-ubuntu-theme && \
   sed -Ei 's/^(bind-address|log)/#&/' /etc/mysql/my.cnf && \
   sed -i "s/^datadir.*/datadir = \/data\/mysql/" /etc/mysql/my.cnf
 

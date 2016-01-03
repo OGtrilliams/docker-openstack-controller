@@ -1,18 +1,36 @@
 #!/bin/bash
 
-# Setup for MySQL
+# Start RabbitMQ server
+echo 'Start RabbitMQ server...'
+service rabbitmq-server start
+
+# Change password for RabbitMQ server
+while true; do
+  if [ "$RABBIT_PASS" ]; then
+    rabbitmqctl change_password guest $RABBIT_PASS
+    if [ $? == 0 ]; then
+      break
+    else
+      echo "Waiting for RabbitMQ Server password change..."; sleep 1
+    fi
+  fi
+done
+
+# Configure packages
 if [ ! -d /data/mysql/mysql ]; then
-  echo 'Running mysql_install_db ...'
+  INSTALL=1
+
+  echo 'Running mysql_install_db...'
   mysql_install_db
-  echo 'Finished mysql_install_db'
+  echo 'Finished mysql_install_db...'
 
   tempSqlFile='/tmp/mysql-setup.sql'
-  echo "DELETE FROM mysql.user; \
-    CREATE USER 'root'@'%' IDENTIFIED BY '${MYSQL_ROOT_PASSWORD}'; \
-    GRANT ALL ON *.* TO 'root'@'%' IDENTIFIED BY '${MYSQL_ROOT_PASSWORD}'; \
-    DROP DATABASE IF EXISTS test;" > "$tempSqlFile"
+  echo "DELETE FROM mysql.user;" > "$tempSqlFile"
+  echo "CREATE USER 'root'@'%' IDENTIFIED BY '${MYSQL_ROOT_PASSWORD}';" >> "$tempSqlFile"
+  echo "GRANT ALL ON *.* TO 'root'@'%' IDENTIFIED BY '${MYSQL_ROOT_PASSWORD}';" >> "$tempSqlFile"
+  echo "DROP DATABASE IF EXISTS test;" >> "$tempSqlFile"
 
-  # Create User & Database
+  # Create users & databases
   if [ "$KEYSTONE_DBPASS" ]; then
     echo "CREATE USER 'keystone'@'%' IDENTIFIED BY '$KEYSTONE_DBPASS';" >> "$tempSqlFile"
     echo "CREATE DATABASE IF NOT EXISTS \`keystone\`;" >> "$tempSqlFile"
@@ -45,41 +63,99 @@ else
   mysqld &
 fi
 
-# Rabbitmq-server Setup
-echo 'Rabbitmq-server Setup...'
-service rabbitmq-server start
+# Keystone setup
+echo 'Keystone setup...'
 
-# Change password for Rabbitmq Server
-while true; do
-  if [ "$RABBIT_PASS" ]; then
-    rabbitmqctl change_password guest $RABBIT_PASS
-    if [ $? == 0 ]; then break
-    else echo "Waiting for RabbitMQ Server Password change..."; sleep 1
-    fi
-  fi
-done
-
-# Keystone Setup
-echo 'Keystone Setup...'
-sed -i "s#^connection.*#connection = mysql://keystone:$KEYSTONE_DBPASS@controller/keystone#" /etc/keystone/keystone.conf
-
+sed -i "s#^connection.*#connection = mysql://keystone:$KEYSTONE_DBPASS@$CONTROLLER_HOST/keystone#" /etc/keystone/keystone.conf
 if [ "$ADMIN_TOKEN" ]; then
   sed -i "s/^#admin_token.*/admin_token = $ADMIN_TOKEN/" /etc/keystone/keystone.conf
 fi
-
 sed -i "s/^#provider.*/provider = keystone.token.providers.uuid.Provider/" /etc/keystone/keystone.conf
 sed -i "s/^#driver=keystone.token.*/driver=keystone.token.persistence.backends.sql.Token/" /etc/keystone/keystone.conf
 sed -i "s/^#driver=keystone.contrib.revoke.*/driver = keystone.contrib.revoke.backends.sql.Revoke/" /etc/keystone/keystone.conf
 
-# excution for keystone Service
-su -s /bin/sh -c "keystone-manage db_sync" keystone
 su -s /bin/sh -c "keystone-all &" keystone
 
-# remove the SQLite database file:
-rm -f /var/lib/keystone/keystone.db
+if [[ $INSTALL -eq 1 ]]; then
+  su -s /bin/sh -c "keystone-manage db_sync" keystone
 
-# GLANCE SETUP
-echo 'Glance Setup...'
+  # Creation of Tenant & User & Role
+  echo 'Creation of Tenant / User / Role...'
+
+  export SERVICE_TOKEN=$ADMIN_TOKEN
+  export SERVICE_ENDPOINT=http://$CONTROLLER_HOST:35357/v2.0
+
+  # Tenant / User / User-role create for admin
+  keystone tenant-create --name admin --description "Admin Tenant"
+  keystone user-create --name admin --pass $ADMIN_PASS --email $ADMIN_EMAIL
+  keystone role-create --name admin
+  keystone user-role-add --user admin --tenant admin --role admin
+
+  # Tenant / User create for demo
+  keystone tenant-create --name demo --description "Demo Tenant"
+  keystone user-create --name demo --tenant demo --pass $DEMO_PASS --email $DEMO_EMAIL
+
+  # Tenant create for service
+  keystone tenant-create --name $ADMIN_TENANT_NAME --description "Service Tenant"
+
+  # Service create for Identity
+  name=`keystone service-list | awk '/ identity / {print $2}'`
+  if [ -z $name ]; then
+    keystone service-create --name keystone --type identity --description "OpenStack Identity"
+  fi
+
+  # Endpoint create for keystone service
+  name=`keystone service-list | awk '/ identity / {print $2}'`
+  endpoint=`keystone endpoint-list | awk '/ '$name' / {print $2}'`
+  if [ -z "$endpoint" ]; then
+    keystone endpoint-create --region $REGION_NAME --publicurl http://$CONTROLLER_HOST:5000/v2.0 --internalurl http://$CONTROLLER_HOST:5000/v2.0 --adminurl http://$CONTROLLER_HOST:35357/v2.0 --service_id $name
+  fi
+
+  ## FOR GLANCE
+  keystone user-create --name glance --pass $GLANCE_PASS
+  keystone user-role-add --user glance --tenant $ADMIN_TENANT_NAME --role admin
+
+  name=`keystone service-list | awk '/ image / {print $2}'`
+  if [ -z $name ]; then
+    keystone service-create --name glance --type image --description "OpenStack Image Service"
+  fi
+  name=`keystone service-list | awk '/ image / {print $2}'`
+  endpoint=`keystone endpoint-list | awk '/ '$name' / {print $2}'`
+  if [ -z "$endpoint" ]; then
+    keystone endpoint-create --region $REGION_NAME --publicurl http://$CONTROLLER_HOST:9292 --internalurl http://$CONTROLLER_HOST:9292 --adminurl http://$CONTROLLER_HOST:9292 --service_id $name
+  fi
+
+  ## FOR NOVA
+  keystone user-create --name nova --pass $NOVA_PASS
+  keystone user-role-add --user nova --tenant $ADMIN_TENANT_NAME --role admin
+
+  name=`keystone service-list | awk '/ compute / {print $2}'`
+  if [ -z $name ]; then
+    keystone service-create --name nova --type compute --description "OpenStack Compute"
+  fi
+  name=`keystone service-list | awk '/ compute / {print $2}'`
+  endpoint=`keystone endpoint-list | awk '/ '$name' / {print $2}'`
+  if [ -z "$endpoint" ]; then
+    keystone endpoint-create --region $REGION_NAME --publicurl http://$CONTROLLER_HOST:8774/v2/%\(tenant_id\)s --internalurl http://$CONTROLLER_HOST:8774/v2/%\(tenant_id\)s --adminurl http://$CONTROLLER_HOST:8774/v2/%\(tenant_id\)s --service_id $name
+  fi
+
+  ## FOR NEUTRON
+  keystone user-create --name neutron --pass $NEUTRON_PASS
+  keystone user-role-add --user neutron --tenant $ADMIN_TENANT_NAME --role admin
+
+  name=`keystone service-list | awk '/ network / {print $2}'`
+  if [ -z $name ]; then
+    keystone service-create --name neutron --type network --description "OpenStack Networking"
+  fi
+  name=`keystone service-list | awk '/ network / {print $2}'`
+  endpoint=`keystone endpoint-list | awk '/ '$name' / {print $2}'`
+  if [ -z "$endpoint" ]; then
+    keystone endpoint-create --region $REGION_NAME --publicurl http://$CONTROLLER_HOST:9696 --internalurl http://$CONTROLLER_HOST:9696 --adminurl http://$CONTROLLER_HOST:9696 --service_id $name
+  fi
+fi
+
+# Glance setup
+echo 'Glance setup...'
 GLANCE_API=/etc/glance/glance-api.conf
 GLANCE_REGISTRY=/etc/glance/glance-registry.conf
 GLANCE_CACHE=/etc/glance/glance-cache.conf
@@ -88,15 +164,15 @@ GLANCE_CACHE=/etc/glance/glance-cache.conf
 sed -i "s/# rpc_backend.*/rpc_backend = 'rabbit'/" $GLANCE_API
 sed -i "s/rabbit_host.*/rabbit_host = controller/" $GLANCE_API
 sed -i "s/rabbit_password.*/rabbit_password = $RABBIT_PASS/" $GLANCE_API
-sed -i "s/sqlite_db.*/connection = mysql:\/\/glance:$GLANCE_DBPASS@controller\/glance/" $GLANCE_API
+sed -i "s/sqlite_db.*/connection = mysql:\/\/glance:$GLANCE_DBPASS@$CONTROLLER_HOST\/glance/" $GLANCE_API
 sed -i "s/backend = sqlalchemy.*/backend = mysql/" $GLANCE_API
 
 ### /etc/glance/glance-registry.conf for MySQL & RabbitMQ
-sed -i "s/sqlite_db.*/connection = mysql:\/\/glance:$GLANCE_DBPASS@controller\/glance/" $GLANCE_REGISTRY
+sed -i "s/sqlite_db.*/connection = mysql:\/\/glance:$GLANCE_DBPASS@$CONTROLLER_HOST\/glance/" $GLANCE_REGISTRY
 sed -i "s/backend = sqlalchemy.*/backend = mysql/" $GLANCE_REGISTRY
 
 ### /etc/glance/glance-api.conf modify for Keystone Service
-sed -i "s/^identity_uri.*/identity_uri = http:\/\/controller:35357/" $GLANCE_API
+sed -i "s/^identity_uri.*/identity_uri = http:\/\/$CONTROLLER_HOST:35357/" $GLANCE_API
 sed -i "s/^admin_tenant_name.*/admin_tenant_name = $ADMIN_TENANT_NAME/" $GLANCE_API
 sed -i "s/^admin_user.*/admin_user = glance/" $GLANCE_API
 sed -i "s/^admin_password.*/admin_password = $GLANCE_PASS/" $GLANCE_API
@@ -104,7 +180,7 @@ sed -i "s/^#flavor.*/flavor = keystone/" $GLANCE_API
 sed -i "s/^#container_formats.*/container_formats=ami,ari,aki,bare,ovf,ova,docker/" $GLANCE_API
 
 ### /etc/glance/glance-registry.conf for Keystone Service
-sed -i "s/^identity_uri.*/identity_uri = http:\/\/controller:35357/" $GLANCE_REGISTRY
+sed -i "s/^identity_uri.*/identity_uri = http:\/\/$CONTROLLER_HOST:35357/" $GLANCE_REGISTRY
 sed -i "s/^admin_tenant_name.*/admin_tenant_name = $ADMIN_TENANT_NAME/" $GLANCE_REGISTRY
 sed -i "s/^admin_user.*/admin_user = glance/" $GLANCE_REGISTRY
 sed -i "s/^admin_password.*/admin_password = $GLANCE_PASS/" $GLANCE_REGISTRY
@@ -114,23 +190,25 @@ sed -i "s/^#flavor.*/flavor = keystone/" $GLANCE_REGISTRY
 chown -R glance:glance /var/lib/glance
 
 # excution for glance service
-su -s /bin/sh -c "glance-manage db_sync" glance
+
+if [[ $INSTALL -eq 1 ]]; then
+  su -s /bin/sh -c "glance-manage db_sync" glance
+fi
 su -s /bin/sh -c "glance-registry &" glance
 su -s /bin/sh -c "glance-api &" glance
-rm -f /var/lib/glance/glance.sqlite
 
-## Nova Setup
-echo 'Nova Setup...'
+## Nova setup
+echo 'Nova setup...'
 NOVA_CONF=/etc/nova/nova.conf
 
 echo "" >> $NOVA_CONF
 echo "rpc_backend = rabbit" >> $NOVA_CONF
-echo "rabbit_host = controller" >> $NOVA_CONF
+echo "rabbit_host = $CONTROLLER_HOST" >> $NOVA_CONF
 echo "rabbit_password = $RABBIT_PASS" >> $NOVA_CONF
 echo "" >> $NOVA_CONF
-echo "my_ip = controller" >> $NOVA_CONF
-echo "vncserver_listen = controller" >> $NOVA_CONF
-echo "vncserver_proxyclient_address = controller" >> $NOVA_CONF
+echo "my_ip = $CONTROLLER_HOST" >> $NOVA_CONF
+echo "vncserver_listen = $CONTROLLER_HOST" >> $NOVA_CONF
+echo "vncserver_proxyclient_address = $CONTROLLER_HOST" >> $NOVA_CONF
 echo "" >> $NOVA_CONF
 echo "auth_strategy = keystone" >> $NOVA_CONF
 echo "" >> $NOVA_CONF
@@ -150,8 +228,8 @@ echo "" >> $NOVA_CONF
 
 echo "" >> $NOVA_CONF
 echo "[keystone_authtoken]" >> $NOVA_CONF
-echo "auth_uri = http://controller:5000/v2.0" >> $NOVA_CONF
-echo "identity_uri = http://controller:35357" >> $NOVA_CONF
+echo "auth_uri = http://$CONTROLLER_HOST:5000/v2.0" >> $NOVA_CONF
+echo "identity_uri = http://$CONTROLLER_HOST:35357" >> $NOVA_CONF
 echo "admin_tenant_name = $ADMIN_TENANT_NAME"  >> $NOVA_CONF
 echo "admin_user = nova" >> $NOVA_CONF
 echo "admin_password = $NOVA_PASS" >> $NOVA_CONF
@@ -159,9 +237,9 @@ echo "" >> $NOVA_CONF
 
 ######### Neutron Setup Start ######################
 echo "[neutron]" >> $NOVA_CONF
-echo "url = http://controller:9696" >> $NOVA_CONF
+echo "url = http://$CONTROLLER_HOST:9696" >> $NOVA_CONF
 echo "auth_strategy = keystone" >> $NOVA_CONF
-echo "admin_auth_url = http://controller:35357/v2.0" >> $NOVA_CONF
+echo "admin_auth_url = http://$CONTROLLER_HOST:35357/v2.0" >> $NOVA_CONF
 echo "admin_tenant_name = $ADMIN_TENANT_NAME" >> $NOVA_CONF
 echo "admin_username = neutron" >> $NOVA_CONF
 echo "admin_password = $NEUTRON_PASS" >> $NOVA_CONF
@@ -172,14 +250,14 @@ echo "metadata_proxy_shared_secret = METADATA_SECRET" >> $NOVA_CONF
 # Database Section
 echo "" >> $NOVA_CONF
 echo "[database]" >> $NOVA_CONF
-echo "connection=mysql://nova:$NOVA_DBPASS@controller/nova" >> $NOVA_CONF
+echo "connection=mysql://nova:$NOVA_DBPASS@$CONTROLLER_HOST/nova" >> $NOVA_CONF
 
 # Glance Section
 echo "" >> $NOVA_CONF
 echo "[glance]" >> $NOVA_CONF
-echo "host = controller" >> $NOVA_CONF
+echo "host = $CONTROLLER_HOST" >> $NOVA_CONF
 
-# apache2 & memcached service starting for Horizone Service
+# apache2 & memcached service starting for Horizon Service
 if [ "$TIME_ZONE" ]; then
   sed -i "s|^TIME_ZONE.*|TIME_ZONE = \"$TIME_ZONE\"|" /etc/openstack-dashboard/local_settings.py
 fi
@@ -189,8 +267,9 @@ service memcached start
 service apache2 start
 
 # Nova service start
-su -s /bin/sh -c "nova-manage db sync" nova
-rm -f /var/lib/nova/nova.sqlite
+if [[ $INSTALL -eq 1 ]]; then
+  su -s /bin/sh -c "nova-manage db sync" nova
+fi
 
 su -s /bin/sh -c "nova-api --config-file=$NOVA_CONF &" nova
 su -s /bin/sh -c "nova-cert --config-file=$NOVA_CONF &" nova
@@ -198,80 +277,6 @@ su -s /bin/sh -c "nova-consoleauth --config-file=$NOVA_CONF &" nova
 su -s /bin/sh -c "nova-scheduler --config-file=$NOVA_CONF &" nova
 su -s /bin/sh -c "nova-conductor --config-file=$NOVA_CONF &" nova
 su -s /bin/sh -c "nova-novncproxy --config-file=$NOVA_CONF &" nova
-
-# Creation of Tenant & User & Role
-echo 'Creation of Tenant / User / Role...'
-
-export SERVICE_TOKEN=$ADMIN_TOKEN
-export SERVICE_ENDPOINT=http://controller:35357/v2.0
-
-# Tenant / User / User-role create for admin
-keystone tenant-create --name admin --description "Admin Tenant"
-keystone user-create --name admin --pass $ADMIN_PASS --email $ADMIN_EMAIL
-keystone role-create --name admin
-keystone user-role-add --user admin --tenant admin --role admin
-
-# Tenant / User create for demo
-keystone tenant-create --name demo --description "Demo Tenant"
-keystone user-create --name demo --tenant demo --pass $DEMO_PASS --email $DEMO_EMAIL
-
-# Tenant create for service
-keystone tenant-create --name $ADMIN_TENANT_NAME --description "Service Tenant"
-
-# Service create for Identity
-name=`keystone service-list | awk '/ identity / {print $2}'`
-if [ -z $name ]; then
-  keystone service-create --name keystone --type identity --description "OpenStack Identity"
-fi
-
-# Endpoint create for keystone service
-name=`keystone service-list | awk '/ identity / {print $2}'`
-endpoint=`keystone endpoint-list | awk '/ '$name' / {print $2}'`
-if [ -z "$endpoint" ]; then
-  keystone endpoint-create --region $REGION_NAME --publicurl http://controller:5000/v2.0 --internalurl http://controller:5000/v2.0 --adminurl http://controller:35357/v2.0 --service_id $name
-fi
-
-## FOR GLANCE
-keystone user-create --name glance --pass $GLANCE_PASS
-keystone user-role-add --user glance --tenant $ADMIN_TENANT_NAME --role admin
-
-name=`keystone service-list | awk '/ image / {print $2}'`
-if [ -z $name ]; then
-  keystone service-create --name glance --type image --description "OpenStack Image Service"
-fi
-name=`keystone service-list | awk '/ image / {print $2}'`
-endpoint=`keystone endpoint-list | awk '/ '$name' / {print $2}'`
-if [ -z "$endpoint" ]; then
-  keystone endpoint-create --region $REGION_NAME --publicurl http://controller:9292 --internalurl http://controller:9292 --adminurl http://controller:9292 --service_id $name
-fi
-
-## FOR NOVA
-keystone user-create --name nova --pass $NOVA_PASS
-keystone user-role-add --user nova --tenant $ADMIN_TENANT_NAME --role admin
-
-name=`keystone service-list | awk '/ compute / {print $2}'`
-if [ -z $name ]; then
-  keystone service-create --name nova --type compute --description "OpenStack Compute"
-fi
-name=`keystone service-list | awk '/ compute / {print $2}'`
-endpoint=`keystone endpoint-list | awk '/ '$name' / {print $2}'`
-if [ -z "$endpoint" ]; then
-  keystone endpoint-create --region $REGION_NAME --publicurl http://controller:8774/v2/%\(tenant_id\)s --internalurl http://controller:8774/v2/%\(tenant_id\)s --adminurl http://controller:8774/v2/%\(tenant_id\)s --service_id $name
-fi
-
-## FOR NEUTRON
-keystone user-create --name neutron --pass $NEUTRON_PASS
-keystone user-role-add --user neutron --tenant $ADMIN_TENANT_NAME --role admin
-
-name=`keystone service-list | awk '/ network / {print $2}'`
-if [ -z $name ]; then
-  keystone service-create --name neutron --type network --description "OpenStack Networking"
-fi
-name=`keystone service-list | awk '/ network / {print $2}'`
-endpoint=`keystone endpoint-list | awk '/ '$name' / {print $2}'`
-if [ -z "$endpoint" ]; then
-  keystone endpoint-create --region $REGION_NAME --publicurl http://controller:9696 --internalurl http://controller:9696 --adminurl http://controller:9696 --service_id $name
-fi
 
 ## Neutron Setup
 echo 'Neutron Setup...'
@@ -281,19 +286,19 @@ ML2_CONF=/etc/neutron/plugins/ml2/ml2_conf.ini
 export OS_TENANT_NAME=admin
 export OS_USERNAME=admin
 export OS_PASSWORD=$ADMIN_PASS
-export OS_AUTH_URL=http://controller:5000/v2.0/
+export OS_AUTH_URL=http://$CONTROLLER_HOST:5000/v2.0/
 export OS_NO_CACHE=1
 
 ### /etc/neutron/neutron.conf modify
-sed -i "s/# connection = mysql.*/connection = mysql:\/\/neutron:$NEUTRON_DBPASS@controller\/neutron/" $NEUTRON_CONF
+sed -i "s/# connection = mysql.*/connection = mysql:\/\/neutron:$NEUTRON_DBPASS@$CONTROLLER_HOST\/neutron/" $NEUTRON_CONF
 sed -i "s/connection = sqlite:.*/#connection = sqlite:/" $NEUTRON_CONF
 sed -i "s/#rpc_backend=rabbit.*/rpc_backend=rabbit/" $NEUTRON_CONF
-sed -i "s/#rabbit_host=localhost.*/rabbit_host=controller/" $NEUTRON_CONF
+sed -i "s/#rabbit_host=localhost.*/rabbit_host=$CONTROLLER_HOST/" $NEUTRON_CONF
 sed -i "s/#rabbit_password=guest.*/rabbit_password=$RABBIT_PASS/" $NEUTRON_CONF
 sed -i "s/# auth_strategy = keystone.*/auth_strategy = keystone/" $NEUTRON_CONF
 
-sed -i "s/^auth_host.*/auth_uri = http:\/\/controller:5000\/v2.0/" $NEUTRON_CONF
-sed -i "s/^auth_port.*/identity_uri = http:\/\/controller:35357/" $NEUTRON_CONF
+sed -i "s/^auth_host.*/auth_uri = http:\/\/$CONTROLLER_HOST:5000\/v2.0/" $NEUTRON_CONF
+sed -i "s/^auth_port.*/identity_uri = http:\/\/$CONTROLLER_HOST:35357/" $NEUTRON_CONF
 
 sed -i "s/admin_tenant_name.*/admin_tenant_name = $ADMIN_TENANT_NAME/" $NEUTRON_CONF
 sed -i "s/^admin_user.*/admin_user = neutron/" $NEUTRON_CONF
@@ -302,8 +307,8 @@ sed -i "s/# service_plugins.*/service_plugins = router/" $NEUTRON_CONF
 sed -i "s/# allow_overlapping_ips.*/allow_overlapping_ips = True/" $NEUTRON_CONF
 sed -i "s/# notify_nova_on_port_status_changes.*/notify_nova_on_port_status_changes = True/" $NEUTRON_CONF
 sed -i "s/# notify_nova_on_port_data_changes.*/notify_nova_on_port_data_changes = True/" $NEUTRON_CONF
-sed -i "s/# nova_url.*/nova_url = http:\/\/controller:8774\/v2/" $NEUTRON_CONF
-sed -i "s/# nova_admin_auth_url.*/nova_admin_auth_url = http:\/\/controller:35357\/v2.0/" $NEUTRON_CONF
+sed -i "s/# nova_url.*/nova_url = http:\/\/$CONTROLLER_HOST:8774\/v2/" $NEUTRON_CONF
+sed -i "s/# nova_admin_auth_url.*/nova_admin_auth_url = http:\/\/$CONTROLLER_HOST:35357\/v2.0/" $NEUTRON_CONF
 sed -i "s/# nova_region_name.*/nova_region_name = $REGION_NAME/" $NEUTRON_CONF
 sed -i "s/# nova_admin_username.*/nova_admin_username = nova/" $NEUTRON_CONF
 sed -i "s/# nova_admin_password.*/nova_admin_password = $NOVA_PASS/" $NEUTRON_CONF
@@ -335,7 +340,9 @@ sed -i "s/# enable_security_group.*/enable_security_group = True/" $ML2_CONF
 sed -i "s/# enable_ipset.*/enable_ipset = True/" $ML2_CONF
 echo "firewall_driver = neutron.agent.linux.iptables_firewall.OVSHybridIptablesFirewallDriver" >> $ML2_CONF
 
-su -s /bin/sh -c "neutron-db-manage --config-file /etc/neutron/neutron.conf --config-file /etc/neutron/plugins/ml2/ml2_conf.ini upgrade liberty" neutron
+if [[ $INSTALL -eq 1 ]]; then
+  su -s /bin/sh -c "neutron-db-manage --config-file $NEUTRON_CONF --config-file $ML2_CONF upgrade liberty" neutron
+fi
 
-echo 'Neutron Service Starting...'
+echo 'Neutron service starting...'
 su -s /bin/sh -c "neutron-server --config-file $NEUTRON_CONF --config-file $ML2_CONF" neutron
