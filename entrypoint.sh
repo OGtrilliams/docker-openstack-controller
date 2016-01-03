@@ -20,6 +20,9 @@ done
 if [ ! -d /data/mysql/mysql ]; then
   INSTALL=1
 
+  sed -Ei 's/^(bind-address|log)/#&/' /etc/mysql/my.cnf && \
+  sed -i "s/^datadir.*/datadir = \/data\/mysql/" /etc/mysql/my.cnf
+
   echo 'Running mysql_install_db...'
   mysql_install_db
   echo 'Finished mysql_install_db...'

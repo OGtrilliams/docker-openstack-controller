@@ -2,6 +2,7 @@ FROM ubuntu:14.04
 
 MAINTAINER EnnWeb Cloud <cloud@ennweb.com>
 
+ENV DEBIAN_FRONTEND noninteractive
 ENV CONTROLLER_HOST controller
 ENV HA_MODE L3_HA
 ENV TIME_ZONE Europe/London
@@ -37,17 +38,18 @@ RUN \
   add-apt-repository -y cloud-archive:liberty && \
   apt-get update && \
   apt-get -y dist-upgrade && \
-  apt-get install -y mysql-server python-mysqldb rabbitmq-server keystone python-keyring glance nova-api \
+  apt-get install -y vim wget mysql-server python-mysqldb rabbitmq-server keystone python-keyring glance nova-api \
     nova-cert nova-conductor nova-consoleauth nova-novncproxy nova-scheduler python-novaclient apache2 \
     memcached libapache2-mod-wsgi openstack-dashboard neutron-server neutron-plugin-ml2 python-neutronclient && \
-  apt-get remove --auto-remove openstack-dashboard-ubuntu-theme && \
-  sed -Ei 's/^(bind-address|log)/#&/' /etc/mysql/my.cnf && \
-  sed -i "s/^datadir.*/datadir = \/data\/mysql/" /etc/mysql/my.cnf
+  apt-get remove -y --auto-remove openstack-dashboard-ubuntu-theme && \
+  apt-get autoclean && \
+  apt-get autoremove && \
+  rm -rf /var/lib/apt/lists/*
 
 VOLUME ["/data"]
 
 Add entrypoint.sh /
 
-EXPOSE 3306 35357 9292 5000 5672 8774 8776 6080 9696 80
+EXPOSE 80 3306 5000 5672 6080 8774 8776 9292 9696 35357
 
 ENTRYPOINT ["/entrypoint.sh"]
