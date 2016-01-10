@@ -21,9 +21,7 @@ ENV NEUTRON_PASS neutronpass
 ENV CINDER_DBPASS openstack
 ENV CINDER_PASS cinderpass
 ENV ADMIN_PROJECT Admin Project
-ENV ADMIN_EMAIL admin@localhost
 ENV ADMIN_PASS adminpass
-ENV DEMO_EMAIL demo@localhost
 ENV DEMO_PASS demopass
 ENV METADATA_SECRET metadasecret
 

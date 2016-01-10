@@ -96,13 +96,13 @@ if [[ $INSTALL -eq 1 ]]; then
   openstack endpoint create --region $REGION_NAME identity admin http://$CONTROLLER_HOST:35357/v3
 
   openstack project create --domain default --description "$ADMIN_PROJECT" admin
-  openstack user create --domain default --password $ADMIN_PASS --email $ADMIN_EMAIL admin
+  openstack user create --domain default --password $ADMIN_PASS admin
   openstack role create admin
   openstack role add --project admin --user admin admin
 
   openstack project create --domain default --description "Service Project" service
   openstack project create --domain default --description "Demo Project" demo
-  openstack user create --domain default --password $DEMO_PASS --email $DEMO_EMAIL demo
+  openstack user create --domain default --password $DEMO_PASS demo
   openstack role create user
   openstack role add --project demo --user demo user
 
@@ -310,8 +310,14 @@ sed -i "s/enable_firewall': True/enable_firewall': False/" $HORIZON_CONF
 sed -i "s/enable_vpn': True/enable_vpn': False/" $HORIZON_CONF
 sed -i "s/enable_fip_topology_check': True/enable_fip_topology_check': False/" $HORIZON_CONF
 sed -i "s#^TIME_ZONE.*#TIME_ZONE = \"$TIME_ZONE\"#" $HORIZON_CONF
+rm -rf /var/www/html/index.html
+echo "RewriteEngine on\nRewriteCond %{REQUEST_URI} ^/\$\nRewriteRule (.*) /horizon [R=301,L]"
 
 service apache2 reload
 
 ## Setup complete
 echo 'Setup complete!...'
+
+while true
+  do sleep 1
+done
