@@ -20,27 +20,22 @@ ENV NEUTRON_DBPASS openstack
 ENV NEUTRON_PASS neutronpass
 ENV CINDER_DBPASS openstack
 ENV CINDER_PASS cinderpass
-ENV ADMIN_TENANT_NAME service
+ENV ADMIN_PROJECT Admin Project
 ENV ADMIN_EMAIL admin@localhost
 ENV ADMIN_PASS adminpass
 ENV DEMO_EMAIL demo@localhost
 ENV DEMO_PASS demopass
+ENV METADATA_SECRET metadasecret
 
 RUN \
-  { \
-    echo "mysql-server-5.5 mysql-server/root_password password $MYSQL_ROOT_PASSWORD"; \
-    echo "mysql-server-5.5 mysql-server/root_password_again password $MYSQL_ROOT_PASSWORD"; \
-    echo "mysql-server-5.5 mysql-server/root_password seen true"; \
-    echo "mysql-server-5.5 mysql-server/root_password_again seen true"; \
-  } | debconf-set-selections && \
   apt-get update && \
-  apt-get -y install software-properties-common python-software-properties && \
-  add-apt-repository -y cloud-archive:liberty && \
-  apt-get update && \
-  apt-get -y dist-upgrade && \
-  apt-get install -y vim wget mysql-server python-mysqldb rabbitmq-server keystone python-keyring glance nova-api \
-    nova-cert nova-conductor nova-consoleauth nova-novncproxy nova-scheduler python-novaclient apache2 \
-    memcached libapache2-mod-wsgi openstack-dashboard neutron-server neutron-plugin-ml2 python-neutronclient && \
+  apt-get install -y software-properties-common && \
+  add-apt-repository  -y cloud-archive:liberty && \
+  apt-get update && apt-get -y dist-upgrade && \
+  apt-get install -y python-openstackclient mariadb-server python-pymysql mongodb-server mongodb-clients python-pymongo \
+    rabbitmq-server keystone apache2 libapache2-mod-wsgi memcached python-memcache glance python-glanceclient \
+    nova-api nova-cert nova-conductor nova-consoleauth nova-novncproxy nova-scheduler python-novaclient neutron-server \
+    neutron-plugin-ml2 python-neutronclient openstack-dashboard && \
   apt-get remove -y --auto-remove openstack-dashboard-ubuntu-theme && \
   apt-get autoclean && \
   apt-get autoremove && \
@@ -48,7 +43,8 @@ RUN \
 
 VOLUME ["/data"]
 
-Add entrypoint.sh /
+ADD entrypoint.sh /
+ADD config/wsgi-keystone.conf /etc/apache2/sites-available/wsgi-keystone.conf
 
 EXPOSE 80 3306 5000 5672 6080 8774 8776 9292 9696 35357
 
