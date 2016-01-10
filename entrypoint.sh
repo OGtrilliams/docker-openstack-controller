@@ -311,7 +311,7 @@ sed -i "s/enable_vpn': True/enable_vpn': False/" $HORIZON_CONF
 sed -i "s/enable_fip_topology_check': True/enable_fip_topology_check': False/" $HORIZON_CONF
 sed -i "s#^TIME_ZONE.*#TIME_ZONE = \"$TIME_ZONE\"#" $HORIZON_CONF
 rm -rf /var/www/html/index.html
-echo "RewriteEngine on\nRewriteCond %{REQUEST_URI} ^/\$\nRewriteRule (.*) /horizon [R=301,L]"
+echo "RewriteEngine on\nRewriteCond %{REQUEST_URI} ^/\$\nRewriteRule (.*) /horizon [R=301,L]" > /var/www/html/.htaccess
 
 service apache2 reload
 
