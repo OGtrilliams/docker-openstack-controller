@@ -197,7 +197,7 @@ echo "auth_url = http://$CONTROLLER_HOST:35357" >> $NOVA_CONF
 echo "auth_plugin = password" >> $NOVA_CONF
 echo "project_domain_id = default" >> $NOVA_CONF
 echo "user_domain_id = default" >> $NOVA_CONF
-echo "admin_tenant_name = service" >> $NOVA_CONF
+echo "project_name = service" >> $NOVA_CONF
 echo "username = nova" >> $NOVA_CONF
 echo "password = $NOVA_PASS" >> $NOVA_CONF
 
