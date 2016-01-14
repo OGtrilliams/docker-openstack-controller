@@ -76,9 +76,9 @@ fi
 
 if [[ $INSTALL -eq 1 ]]; then
   su -s /bin/sh -c "keystone-manage db_sync" keystone
-  ln -s /etc/apache2/sites-available/wsgi-keystone.conf /etc/apache2/sites-enabled
 fi
 
+ln -s /etc/apache2/sites-available/wsgi-keystone.conf /etc/apache2/sites-enabled
 service memcached restart
 service apache2 restart
 
@@ -256,13 +256,13 @@ sed -i "s/^# rabbit_password = guest.*/rabbit_password = $RABBIT_PASS/" $NEUTRON
 sed -i "s/^# auth_strategy = keystone.*/auth_strategy = keystone/" $NEUTRON_CONF
 sed -i "s/^auth_uri =.*/auth_uri = http:\/\/$CONTROLLER_HOST:5000/" $NEUTRON_CONF
 sed -i "s/^identity_uri =.*/auth_url = http:\/\/$CONTROLLER_HOST:35357/" $NEUTRON_CONF
-sed -i "s/^admin_tenant_name =.*/\nauth_plugin = password\nproject_domain_id = default\nuser_domain_id = default\nproject_name = service/" $NEUTRON_CONF
+sed -i "s/^admin_tenant_name =.*/auth_plugin = password\nproject_domain_id = default\nuser_domain_id = default\nproject_name = service/" $NEUTRON_CONF
 sed -i "s/^admin_user =.*/username = neutron/" $NEUTRON_CONF
 sed -i "s/^admin_password =.*/password = $NEUTRON_PASS/" $NEUTRON_CONF
 sed -i "s/# notify_nova_on_port_status_changes.*/notify_nova_on_port_status_changes = True/" $NEUTRON_CONF
 sed -i "s/# notify_nova_on_port_data_changes.*/notify_nova_on_port_data_changes = True/" $NEUTRON_CONF
 sed -i "s/# nova_url.*/nova_url = http:\/\/$CONTROLLER_HOST:8774\/v2/" $NEUTRON_CONF
-sed -i "s/^\[nova\]/[nova]\n\nauth_url = http:\/\/$CONTROLLER_HOST:35357\nauth_plugin = password\nproject_domain_id = default\nuser_domain_id = default\nregion_name = $REGION_NAME\nproject_name = service\nusername = nova\npassword = $NOVA_PASS/" $NEUTRON_CONF
+sed -i "s/^\[nova\]/[nova]\n\nauth_url = http:\/\/$CONTROLLER_HOST:35357\nauth_plugin = password\nproject_domain_id = default\nuser_domain_id = default\nregion_name = $REGION_NAME\nproject_name = service\nusername = nova\npassword = $NOVA_PASS\n\n/" $NEUTRON_CONF
 sed -i "s/^# service_plugins.*/service_plugins = router/" $NEUTRON_CONF
 sed -i "s/# allow_overlapping_ips.*/allow_overlapping_ips = True/" $NEUTRON_CONF
 
@@ -311,9 +311,12 @@ sed -i "s/enable_vpn': True/enable_vpn': False/" $HORIZON_CONF
 sed -i "s/enable_fip_topology_check': True/enable_fip_topology_check': False/" $HORIZON_CONF
 sed -i "s#^TIME_ZONE.*#TIME_ZONE = \"$TIME_ZONE\"#" $HORIZON_CONF
 rm -rf /var/www/html/index.html
-echo "RewriteEngine on\nRewriteCond %{REQUEST_URI} ^/\$\nRewriteRule (.*) /horizon [R=301,L]" > /var/www/html/.htaccess
-
-service apache2 reload
+sed -i "s#^</VirtualHost>#\n\t<Directory /var/www/html>\n\t\tOptions -Indexes\n\t\tAllowOverride All\n\t</Directory>\n\n</VirtualHost>#" /etc/apache2/sites-enabled/000-default.conf
+echo "RewriteEngine on" > /var/www/html/.htaccess
+echo "RewriteCond %{REQUEST_URI} ^/\$" >> /var/www/html/.htaccess
+echo "RewriteRule (.*) /horizon [R=301,L]" >> /var/www/html/.htaccess
+a2enmod rewrite
+service apache2 restart
 
 ## Setup complete
 echo 'Setup complete!...'
