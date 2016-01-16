@@ -7,7 +7,7 @@ rabbitmqctl add_user $RABBIT_USER $RABBIT_PASS
 rabbitmqctl set_permissions $RABBIT_USER ".*" ".*" ".*"
 
 echo 'Mysql setup...'
-if [[ $MYSQL_SETUP -eq "local" ]]; then
+if [ "$MYSQL_SETUP" == "local" ]; then
   # Setup mysql
   sed -i "s/^datadir.*/datadir = \/data\/mysql/" /etc/mysql/my.cnf
   echo "[mysqld]" > /etc/mysql/conf.d/mysqld.cnf
@@ -18,7 +18,7 @@ if [[ $MYSQL_SETUP -eq "local" ]]; then
   echo "init-connect = 'SET NAMES utf8'" >> /etc/mysql/conf.d/mysqld.cnf
   echo "character-set-server = utf8" >> /etc/mysql/conf.d/mysqld.cnf
 
-  if [[ $FORCE_INSTALL -eq 1 ]]; then
+  if [ "$FORCE_INSTALL" == "yes" ]; then
     rm -rf /data/mysql
     mysql_install_db
     service mysql start
@@ -43,7 +43,7 @@ if [[ $MYSQL_SETUP -eq "local" ]]; then
     service mysql start
   fi
 else
-  if [[ $FORCE_INSTALL -eq 1 ]]; then
+  if [ "$FORCE_INSTALL" == "yes" ]; then
     # Create users & databases
     mysql -h$MYSQL_HOST -u$MYSQL_USER -p$MYSQL_PASS -e " \
       CREATE DATABASE keystone; \
@@ -63,7 +63,7 @@ fi
 
 # Run mongodb service
 echo 'Mongodb setup...'
-if [[ $FORCE_INSTALL -eq 1 ]]; then
+if [ "$FORCE_INSTALL" == "yes" ]; then
   rm -rf /data/mongodb
   mkdir -p /data/mongodb
   chown mongodb:mongodb /data/mongodb
@@ -84,7 +84,7 @@ if [ "$ADMIN_TOKEN" ]; then
   sed -i "s/^#admin_token.*/admin_token = $ADMIN_TOKEN/" /etc/keystone/keystone.conf
 fi
 
-if [[ $FORCE_INSTALL -eq 1 ]]; then
+if [ "$FORCE_INSTALL" == "yes" ]; then
   su -s /bin/sh -c "keystone-manage db_sync" keystone
 fi
 
@@ -92,7 +92,7 @@ ln -s /etc/apache2/sites-available/wsgi-keystone.conf /etc/apache2/sites-enabled
 service memcached restart
 service apache2 restart
 
-if [[ $FORCE_INSTALL -eq 1 ]]; then
+if [ "$FORCE_INSTALL" == "yes" ]; then
   # Creation of Tenant & User & Role
   echo 'Creation of Tenant / User / Role...'
 
@@ -166,7 +166,7 @@ sed -i "s/^#admin_tenant_name.*/admin_tenant_name = service/" $GLANCE_API
 sed -i "s/^#admin_user.*/admin_user = glance/" $GLANCE_API
 sed -i "s/^#admin_password.*/admin_password = $GLANCE_PASS/" $GLANCE_API
 sed -i "s/^#flavor.*/flavor = keystone/" $GLANCE_API
-if [[ $STORE_BACKEND -eq "ceph" ]]; then
+if [ "$STORE_BACKEND" == "ceph" ]; then
   sed -i "s/^#default_store.*/default_store = rbd/" $GLANCE_API
   sed -i "s/^#stores.*/stores = rbd/" $GLANCE_API
   sed -i "s/^#show_image_direct_url.*/show_image_direct_url = true/" $GLANCE_API
@@ -191,8 +191,8 @@ sed -i "s/^#flavor.*/flavor = keystone/" $GLANCE_REGISTRY
 sed -i "s/^#notification_driver.*/notification_driver = noop/" $GLANCE_API
 
 # excution for glance service
-if [[ $FORCE_INSTALL -eq 1 ]]; then
-  if [[ $STORE_BACKEND -eq "file" ]]; then
+if [ "$FORCE_INSTALL" == "yes" ]; then
+  if [ "$STORE_BACKEND" == "file" ]; then
     rm -rf /data/glance
     mkdir -p /data/glance
     chown glance:glance /data/glance
@@ -208,7 +208,7 @@ CINDER_CONF=/etc/cinder/cinder.conf
 echo "my_ip = 0.0.0.0" >> $CINDER_CONF
 echo "rpc_backend = rabbit" >> $CINDER_CONF
 
-if [[ $STORE_BACKEND -eq "ceph" ]]; then
+if [ "$STORE_BACKEND" == "ceph" ]; then
   echo "" >> $CINDER_CONF
   echo "volume_driver = cinder.volume.drivers.rbd.RBDDriver" >> $CINDER_CONF
   echo "rbd_pool = volumes" >> $CINDER_CONF
@@ -258,7 +258,7 @@ echo "[oslo_concurrency]" >> $CINDER_CONF
 echo "lock_path = /var/lib/cinder/tmp" >> $CINDER_CONF
 
 # Cinder service start
-if [[ $FORCE_INSTALL -eq 1 ]]; then
+if [ "$FORCE_INSTALL" == "yes" ]; then
   su -s /bin/sh -c "cinder-manage db sync" cinder
 fi
 
@@ -329,7 +329,7 @@ echo "service_metadata_proxy = True" >> $NOVA_CONF
 echo "metadata_proxy_shared_secret = $METADATA_SECRET" >> $NOVA_CONF
 
 # Nova service start
-if [[ $FORCE_INSTALL -eq 1 ]]; then
+if [ "$FORCE_INSTALL" == "yes" ]; then
   su -s /bin/sh -c "nova-manage db sync" nova
 fi
 
@@ -365,12 +365,9 @@ sed -i "s/^# service_plugins.*/service_plugins = router/" $NEUTRON_CONF
 sed -i "s/# allow_overlapping_ips.*/allow_overlapping_ips = True/" $NEUTRON_CONF
 
 # DVR Setup / L3 HA
-if [ $HA_MODE == "DVR" ]; then
+if [ "$HA_MODE" == "DVR" ]; then
   sed -i "s/^# router_distributed.*/router_distributed = True/" $NEUTRON_CONF
-fi
-
-# L3 HA Setup
-if [ $HA_MODE == "L3_HA" ]; then
+else
   sed -i "s/^# router_distributed.*/router_distributed = False/" $NEUTRON_CONF
   sed -i "s/^# l3_ha = False.*/l3_ha = True/" $NEUTRON_CONF
   sed -i "s/^# max_l3_agents_per_router.*/max_l3_agents_per_router = 0/" $NEUTRON_CONF
@@ -389,7 +386,7 @@ sed -i "s/# enable_security_group.*/enable_security_group = True/" $ML2_CONF
 sed -i "s/# enable_ipset.*/enable_ipset = True/" $ML2_CONF
 echo "firewall_driver = neutron.agent.linux.iptables_firewall.OVSHybridIptablesFirewallDriver" >> $ML2_CONF
 
-if [[ $FORCE_INSTALL -eq 1 ]]; then
+if [ "$FORCE_INSTALL" == "yes" ]; then
   su -s /bin/sh -c "neutron-db-manage --config-file $NEUTRON_CONF --config-file $ML2_CONF upgrade liberty" neutron
 fi
 
