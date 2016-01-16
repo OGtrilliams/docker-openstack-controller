@@ -263,6 +263,8 @@ if [ "$FORCE_INSTALL" == "yes" ]; then
 fi
 
 service cinder-scheduler restart
+service cinder-backup restart
+service cinder-volume restart
 service cinder-api restart
 
 ## Nova setup
