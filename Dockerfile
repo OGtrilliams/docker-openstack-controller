@@ -3,13 +3,18 @@ FROM ubuntu:14.04
 MAINTAINER EnnWeb Cloud <cloud@ennweb.com>
 
 ENV DEBIAN_FRONTEND noninteractive
+ENV FORCE_INSTALL 1
 ENV CONTROLLER_HOST controller
 ENV HA_MODE L3_HA
 ENV TIME_ZONE Europe/London
 ENV ADMIN_TOKEN ADMIN
 ENV REGION_NAME RegionOne
+ENV RABBIT_USER openstack
 ENV RABBIT_PASS rabbitpass
-ENV MYSQL_ROOT_PASSWORD mysqlpass
+ENV MYSQL_SETUP local
+ENV MYSQL_HOST controller
+ENV MYSQL_USER root
+ENV MYSQL_PASS mysqlpass
 ENV KEYSTONE_DBPASS openstack
 ENV KEYSTONE_PASS keystonepass
 ENV GLANCE_DBPASS openstack
@@ -20,10 +25,9 @@ ENV NEUTRON_DBPASS openstack
 ENV NEUTRON_PASS neutronpass
 ENV CINDER_DBPASS openstack
 ENV CINDER_PASS cinderpass
-ENV ADMIN_PROJECT Admin Project
 ENV ADMIN_PASS adminpass
 ENV DEMO_PASS demopass
-ENV METADATA_SECRET metadasecret
+ENV METADATA_SECRET metadatasecret
 
 RUN \
   apt-get update && \

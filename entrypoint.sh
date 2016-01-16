@@ -1,61 +1,72 @@
 #!/bin/bash
 
-# Check installation
-if [ ! -d /data/mysql/mysql ]; then
-  INSTALL=1
-fi
-
 # Start RabbitMQ server
 echo 'Start RabbitMQ server...'
 service rabbitmq-server start
-rabbitmqctl add_user openstack $RABBIT_PASS
-rabbitmqctl set_permissions openstack ".*" ".*" ".*"
+rabbitmqctl add_user $RABBIT_USER $RABBIT_PASS
+rabbitmqctl set_permissions $RABBIT_USER ".*" ".*" ".*"
 
-# Setup mysql
-sed -i "s/^datadir.*/datadir = \/data\/mysql/" /etc/mysql/my.cnf
-echo "[mysqld]" > /etc/mysql/conf.d/mysqld.cnf
-echo "bind-address = 0.0.0.0" >> /etc/mysql/conf.d/mysqld.cnf
-echo "default-storage-engine = innodb" >> /etc/mysql/conf.d/mysqld.cnf
-echo "innodb_file_per_table" >> /etc/mysql/conf.d/mysqld.cnf
-echo "collation-server = utf8_general_ci" >> /etc/mysql/conf.d/mysqld.cnf
-echo "init-connect = 'SET NAMES utf8'" >> /etc/mysql/conf.d/mysqld.cnf
-echo "character-set-server = utf8" >> /etc/mysql/conf.d/mysqld.cnf
+echo 'Mysql setup...'
+if [[ $MYSQL_SETUP -eq "local" ]]; then
+  # Setup mysql
+  sed -i "s/^datadir.*/datadir = \/data\/mysql/" /etc/mysql/my.cnf
+  echo "[mysqld]" > /etc/mysql/conf.d/mysqld.cnf
+  echo "bind-address = 0.0.0.0" >> /etc/mysql/conf.d/mysqld.cnf
+  echo "default-storage-engine = innodb" >> /etc/mysql/conf.d/mysqld.cnf
+  echo "innodb_file_per_table" >> /etc/mysql/conf.d/mysqld.cnf
+  echo "collation-server = utf8_general_ci" >> /etc/mysql/conf.d/mysqld.cnf
+  echo "init-connect = 'SET NAMES utf8'" >> /etc/mysql/conf.d/mysqld.cnf
+  echo "character-set-server = utf8" >> /etc/mysql/conf.d/mysqld.cnf
 
-if [[ $INSTALL -eq 1 ]]; then
-  mysql_install_db
-  service mysql start
-
-  mysql -e "DELETE FROM mysql.user"
-  mysql -e "GRANT ALL ON *.* TO 'root'@'%' IDENTIFIED BY '$MYSQL_ROOT_PASSWORD' WITH GRANT OPTION"
-  mysql -e "DELETE FROM mysql.db WHERE Db='test' OR Db='test\_%'"
-  mysql -e "DROP DATABASE IF EXISTS test"
-
-  # Create users & databases
-  mysql -e "CREATE DATABASE keystone"
-  mysql -e "GRANT ALL ON keystone.* TO 'keystone'@'%' IDENTIFIED BY '$KEYSTONE_DBPASS'"
-
-  mysql -e "CREATE DATABASE glance"
-  mysql -e "GRANT ALL ON glance.* TO 'glance'@'%' IDENTIFIED BY '$GLANCE_DBPASS'"
-
-  mysql -e "CREATE DATABASE nova"
-  mysql -e "GRANT ALL ON nova.* TO 'nova'@'%' IDENTIFIED BY '$NOVA_DBPASS'"
-
-  mysql -e "CREATE DATABASE neutron"
-  mysql -e "GRANT ALL ON neutron.* TO 'neutron'@'%' IDENTIFIED BY '$NEUTRON_DBPASS'"
-
-  mysql -e "CREATE DATABASE cinder"
-  mysql -e "GRANT ALL ON cinder.* TO 'cinder'@'%' IDENTIFIED BY '$CINDER_DBPASS'"
-
-  mysql -e "FLUSH PRIVILEGES"
+  if [[ $FORCE_INSTALL -eq 1 ]]; then
+    rm -rf /data/mysql
+    mysql_install_db
+    service mysql start
+    mysql -e " \
+      DELETE FROM mysql.user; \
+      GRANT ALL ON *.* TO '$MYSQL_USER'@'%' IDENTIFIED BY '$MYSQL_PASS' WITH GRANT OPTION; \
+      DELETE FROM mysql.db WHERE Db='test' OR Db='test\_%'; \
+      DROP DATABASE IF EXISTS test; \
+      CREATE DATABASE keystone; \
+      GRANT ALL ON keystone.* TO 'keystone'@'%' IDENTIFIED BY '$KEYSTONE_DBPASS'; \
+      CREATE DATABASE glance; \
+      GRANT ALL ON glance.* TO 'glance'@'%' IDENTIFIED BY '$GLANCE_DBPASS'; \
+      CREATE DATABASE nova; \
+      GRANT ALL ON nova.* TO 'nova'@'%' IDENTIFIED BY '$NOVA_DBPASS'; \
+      CREATE DATABASE neutron; \
+      GRANT ALL ON neutron.* TO 'neutron'@'%' IDENTIFIED BY '$NEUTRON_DBPASS'; \
+      CREATE DATABASE cinder; \
+      GRANT ALL ON cinder.* TO 'cinder'@'%' IDENTIFIED BY '$CINDER_DBPASS'; \
+      FLUSH PRIVILEGES; \
+    "
+  else
+    service mysql start
+  fi
 else
-  service mysql start
+  if [[ $FORCE_INSTALL -eq 1 ]]; then
+    # Create users & databases
+    mysql -h$MYSQL_HOST -u$MYSQL_USER -p$MYSQL_PASS -e " \
+      CREATE DATABASE keystone; \
+      GRANT ALL ON keystone.* TO 'keystone'@'%' IDENTIFIED BY '$KEYSTONE_DBPASS'; \
+      CREATE DATABASE glance; \
+      GRANT ALL ON glance.* TO 'glance'@'%' IDENTIFIED BY '$GLANCE_DBPASS'; \
+      CREATE DATABASE nova; \
+      GRANT ALL ON nova.* TO 'nova'@'%' IDENTIFIED BY '$NOVA_DBPASS'; \
+      CREATE DATABASE neutron; \
+      GRANT ALL ON neutron.* TO 'neutron'@'%' IDENTIFIED BY '$NEUTRON_DBPASS'; \
+      CREATE DATABASE cinder; \
+      GRANT ALL ON cinder.* TO 'cinder'@'%' IDENTIFIED BY '$CINDER_DBPASS'; \
+      FLUSH PRIVILEGES; \
+    "
+  fi
 fi
 
 # Run mongodb service
 echo 'Mongodb setup...'
-if [[ $INSTALL -eq 1 ]]; then
+if [[ $FORCE_INSTALL -eq 1 ]]; then
+  rm -rf /data/mongodb
   mkdir -p /data/mongodb
-  chown mongodb. /data/mongodb
+  chown mongodb:mongodb /data/mongodb
   sed -i "s/^dbpath.*/dbpath=\/data\/mongodb/" /etc/mongodb.conf
   # sed -i "s/^bind_ip.*/bind_ip = 0.0.0.0/" /etc/mongodb.conf
   echo "smallfiles = true" >> /etc/mongodb.conf
@@ -65,8 +76,7 @@ service mongodb start
 # Keystone setup
 echo 'Keystone setup...'
 
-echo "manual" > /etc/init/keystone.override
-sed -i "s#^connection.*#connection = mysql+pymysql://keystone:$KEYSTONE_DBPASS@$CONTROLLER_HOST/keystone#" /etc/keystone/keystone.conf
+sed -i "s#^connection.*#connection = mysql+pymysql://keystone:$KEYSTONE_DBPASS@$MYSQL_HOST/keystone#" /etc/keystone/keystone.conf
 sed -i "s/^#servers.*/servers = localhost:11211/" /etc/keystone/keystone.conf
 sed -i "s/^#provider.*/provider = uuid\n\ndriver = memcache/" /etc/keystone/keystone.conf
 sed -i "s/^\[revoke\].*/[revoke]\n\ndriver = sql/" /etc/keystone/keystone.conf
@@ -74,7 +84,7 @@ if [ "$ADMIN_TOKEN" ]; then
   sed -i "s/^#admin_token.*/admin_token = $ADMIN_TOKEN/" /etc/keystone/keystone.conf
 fi
 
-if [[ $INSTALL -eq 1 ]]; then
+if [[ $FORCE_INSTALL -eq 1 ]]; then
   su -s /bin/sh -c "keystone-manage db_sync" keystone
 fi
 
@@ -82,7 +92,7 @@ ln -s /etc/apache2/sites-available/wsgi-keystone.conf /etc/apache2/sites-enabled
 service memcached restart
 service apache2 restart
 
-if [[ $INSTALL -eq 1 ]]; then
+if [[ $FORCE_INSTALL -eq 1 ]]; then
   # Creation of Tenant & User & Role
   echo 'Creation of Tenant / User / Role...'
 
@@ -95,7 +105,7 @@ if [[ $INSTALL -eq 1 ]]; then
   openstack endpoint create --region $REGION_NAME identity internal http://$CONTROLLER_HOST:5000/v3
   openstack endpoint create --region $REGION_NAME identity admin http://$CONTROLLER_HOST:35357/v3
 
-  openstack project create --domain default --description "$ADMIN_PROJECT" admin
+  openstack project create --domain default --description "Admin Project" admin
   openstack user create --domain default --password $ADMIN_PASS admin
   openstack role create admin
   openstack role add --project admin --user admin admin
@@ -137,7 +147,7 @@ GLANCE_API=/etc/glance/glance-api.conf
 GLANCE_REGISTRY=/etc/glance/glance-registry.conf
 
 ### /etc/glance/glance-api.conf modify for MySQL & RabbitMQ
-sed -i "s/sqlite_db.*/connection = mysql+pymysql:\/\/glance:$GLANCE_DBPASS@$CONTROLLER_HOST\/glance/" $GLANCE_API
+sed -i "s/sqlite_db.*/connection = mysql+pymysql:\/\/glance:$GLANCE_DBPASS@$MYSQL_HOST\/glance/" $GLANCE_API
 sed -i "s/^#auth_uri.*/auth_uri = http:\/\/$CONTROLLER_HOST:5000\/v3/" $GLANCE_API
 sed -i "s/^#identity_uri.*/identity_uri = http:\/\/$CONTROLLER_HOST:35357/" $GLANCE_API
 sed -i "s/^#admin_tenant_name.*/admin_tenant_name = service/" $GLANCE_API
@@ -149,7 +159,7 @@ sed -i "s/^#filesystem_store_datadir =.*/filesystem_store_datadir = \/data\/glan
 sed -i "s/^#notification_driver.*/notification_driver = noop/" $GLANCE_API
 
 ### /etc/glance/glance-registry.conf for MySQL & RabbitMQ
-sed -i "s/#connection =.*/connection = mysql+pymysql:\/\/glance:$GLANCE_DBPASS@$CONTROLLER_HOST\/glance/" $GLANCE_REGISTRY
+sed -i "s/#connection =.*/connection = mysql+pymysql:\/\/glance:$GLANCE_DBPASS@$MYSQL_HOST\/glance/" $GLANCE_REGISTRY
 sed -i "s/^#auth_uri.*/auth_uri = http:\/\/$CONTROLLER_HOST:5000\/v3/" $GLANCE_REGISTRY
 sed -i "s/^#identity_uri.*/identity_uri = http:\/\/$CONTROLLER_HOST:35357/" $GLANCE_REGISTRY
 sed -i "s/^#admin_tenant_name.*/admin_tenant_name = service/" $GLANCE_REGISTRY
@@ -159,7 +169,8 @@ sed -i "s/^#flavor.*/flavor = keystone/" $GLANCE_REGISTRY
 sed -i "s/^#notification_driver.*/notification_driver = noop/" $GLANCE_API
 
 # excution for glance service
-if [[ $INSTALL -eq 1 ]]; then
+if [[ $FORCE_INSTALL -eq 1 ]]; then
+  rm -rf /data/glance
   mkdir -p /data/glance
   chown glance:glance /data/glance
   su -s /bin/sh -c "glance-manage db_sync" glance
@@ -182,12 +193,12 @@ echo "rpc_backend = rabbit" >> $NOVA_CONF
 
 echo "" >> $NOVA_CONF
 echo "[database]" >> $NOVA_CONF
-echo "connection = mysql+pymysql://nova:$NOVA_DBPASS@$CONTROLLER_HOST/nova" >> $NOVA_CONF
+echo "connection = mysql+pymysql://nova:$NOVA_DBPASS@$MYSQL_HOST/nova" >> $NOVA_CONF
 
 echo "" >> $NOVA_CONF
 echo "[oslo_messaging_rabbit]" >> $NOVA_CONF
 echo "rabbit_host = $CONTROLLER_HOST" >> $NOVA_CONF
-echo "rabbit_userid = openstack" >> $NOVA_CONF
+echo "rabbit_userid = $RABBIT_USER" >> $NOVA_CONF
 echo "rabbit_password = $RABBIT_PASS" >> $NOVA_CONF
 
 echo "" >> $NOVA_CONF
@@ -231,7 +242,7 @@ echo "service_metadata_proxy = True" >> $NOVA_CONF
 echo "metadata_proxy_shared_secret = $METADATA_SECRET" >> $NOVA_CONF
 
 # Nova service start
-if [[ $INSTALL -eq 1 ]]; then
+if [[ $FORCE_INSTALL -eq 1 ]]; then
   su -s /bin/sh -c "nova-manage db sync" nova
 fi
 
@@ -248,10 +259,10 @@ NEUTRON_CONF=/etc/neutron/neutron.conf
 ML2_CONF=/etc/neutron/plugins/ml2/ml2_conf.ini
 
 ### /etc/neutron/neutron.conf modify
-sed -i "s/^connection =.*/connection = mysql+pymysql:\/\/neutron:$NEUTRON_DBPASS@$CONTROLLER_HOST\/neutron/" $NEUTRON_CONF
+sed -i "s/^connection =.*/connection = mysql+pymysql:\/\/neutron:$NEUTRON_DBPASS@$MYSQL_HOST\/neutron/" $NEUTRON_CONF
 sed -i "s/^# rpc_backend=rabbit.*/rpc_backend=rabbit/" $NEUTRON_CONF
 sed -i "s/^# rabbit_host = localhost.*/rabbit_host=$CONTROLLER_HOST/" $NEUTRON_CONF
-sed -i "s/^# rabbit_userid = guest.*/rabbit_userid = openstack/" $NEUTRON_CONF
+sed -i "s/^# rabbit_userid = guest.*/rabbit_userid = $RABBIT_USER/" $NEUTRON_CONF
 sed -i "s/^# rabbit_password = guest.*/rabbit_password = $RABBIT_PASS/" $NEUTRON_CONF
 sed -i "s/^# auth_strategy = keystone.*/auth_strategy = keystone/" $NEUTRON_CONF
 sed -i "s/^auth_uri =.*/auth_uri = http:\/\/$CONTROLLER_HOST:5000/" $NEUTRON_CONF
@@ -291,7 +302,7 @@ sed -i "s/# enable_security_group.*/enable_security_group = True/" $ML2_CONF
 sed -i "s/# enable_ipset.*/enable_ipset = True/" $ML2_CONF
 echo "firewall_driver = neutron.agent.linux.iptables_firewall.OVSHybridIptablesFirewallDriver" >> $ML2_CONF
 
-if [[ $INSTALL -eq 1 ]]; then
+if [[ $FORCE_INSTALL -eq 1 ]]; then
   su -s /bin/sh -c "neutron-db-manage --config-file $NEUTRON_CONF --config-file $ML2_CONF upgrade liberty" neutron
 fi
 
