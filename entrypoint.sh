@@ -124,6 +124,18 @@ if [[ $FORCE_INSTALL -eq 1 ]]; then
   openstack endpoint create --region $REGION_NAME image internal http://$CONTROLLER_HOST:9292
   openstack endpoint create --region $REGION_NAME image admin http://$CONTROLLER_HOST:9292
 
+  openstack user create --domain default --password $CINDER_PASS cinder
+  openstack role add --project service --user cinder admin
+
+  openstack service create --name cinder --description "OpenStack Block Storage" volume
+  openstack service create --name cinderv2 --description "OpenStack Block Storage" volumev2
+  openstack endpoint create --region $REGION_NAME volume public http://$CONTROLLER_HOST:8776/v1/%\(tenant_id\)s
+  openstack endpoint create --region $REGION_NAME volume internal http://$CONTROLLER_HOST:8776/v1/%\(tenant_id\)s
+  openstack endpoint create --region $REGION_NAME volume admin http://$CONTROLLER_HOST:8776/v1/%\(tenant_id\)s
+  openstack endpoint create --region $REGION_NAME volumev2 public http://$CONTROLLER_HOST:8776/v2/%\(tenant_id\)s
+  openstack endpoint create --region $REGION_NAME volumev2 internal http://$CONTROLLER_HOST:8776/v2/%\(tenant_id\)s
+  openstack endpoint create --region $REGION_NAME volumev2 admin http://$CONTROLLER_HOST:8776/v2/%\(tenant_id\)s
+
   openstack user create --domain default --password $NOVA_PASS nova
   openstack role add --project service --user nova admin
 
@@ -154,8 +166,18 @@ sed -i "s/^#admin_tenant_name.*/admin_tenant_name = service/" $GLANCE_API
 sed -i "s/^#admin_user.*/admin_user = glance/" $GLANCE_API
 sed -i "s/^#admin_password.*/admin_password = $GLANCE_PASS/" $GLANCE_API
 sed -i "s/^#flavor.*/flavor = keystone/" $GLANCE_API
-sed -i "s/^#default_store.*/default_store = file/" $GLANCE_API
-sed -i "s/^#filesystem_store_datadir =.*/filesystem_store_datadir = \/data\/glance/" $GLANCE_API
+if [[ $STORE_BACKEND -eq "ceph" ]]; then
+  sed -i "s/^#default_store.*/default_store = rbd/" $GLANCE_API
+  sed -i "s/^#stores.*/stores = rbd/" $GLANCE_API
+  sed -i "s/^#show_image_direct_url.*/show_image_direct_url = true/" $GLANCE_API
+  sed -i "s/^#rbd_store_pool.*/rbd_store_pool = images/" $GLANCE_API
+  sed -i "s/^#rbd_store_user.*/rbd_store_user = glance/" $GLANCE_API
+  sed -i "s/^#rbd_store_ceph_conf.*/rbd_store_ceph_conf = \/etc\/ceph\/ceph.conf/" $GLANCE_API
+  sed -i "s/^#rbd_store_chunk_size.*/rbd_store_chunk_size = 8/" $GLANCE_API
+else
+  sed -i "s/^#default_store.*/default_store = file/" $GLANCE_API
+  sed -i "s/^#filesystem_store_datadir =.*/filesystem_store_datadir = \/data\/glance/" $GLANCE_API
+fi
 sed -i "s/^#notification_driver.*/notification_driver = noop/" $GLANCE_API
 
 ### /etc/glance/glance-registry.conf for MySQL & RabbitMQ
@@ -170,13 +192,78 @@ sed -i "s/^#notification_driver.*/notification_driver = noop/" $GLANCE_API
 
 # excution for glance service
 if [[ $FORCE_INSTALL -eq 1 ]]; then
-  rm -rf /data/glance
-  mkdir -p /data/glance
-  chown glance:glance /data/glance
+  if [[ $STORE_BACKEND -eq "file" ]]; then
+    rm -rf /data/glance
+    mkdir -p /data/glance
+    chown glance:glance /data/glance
+  fi
   su -s /bin/sh -c "glance-manage db_sync" glance
 fi
 service glance-registry restart
 service glance-api restart
+
+echo 'Cinder setup...'
+CINDER_CONF=/etc/cinder/cinder.conf
+
+echo "my_ip = 0.0.0.0" >> $CINDER_CONF
+echo "rpc_backend = rabbit" >> $CINDER_CONF
+
+if [[ $STORE_BACKEND -eq "ceph" ]]; then
+  echo "" >> $CINDER_CONF
+  echo "volume_driver = cinder.volume.drivers.rbd.RBDDriver" >> $CINDER_CONF
+  echo "rbd_pool = volumes" >> $CINDER_CONF
+  echo "rbd_ceph_conf = /etc/ceph/ceph.conf" >> $CINDER_CONF
+  echo "rbd_flatten_volume_from_snapshot = false" >> $CINDER_CONF
+  echo "rbd_max_clone_depth = 5" >> $CINDER_CONF
+  echo "rbd_store_chunk_size = 4" >> $CINDER_CONF
+  echo "rados_connect_timeout = -1" >> $CINDER_CONF
+  echo "glance_api_version = 2" >> $CINDER_CONF
+  echo "" >> $CINDER_CONF
+  echo "backup_driver = cinder.backup.drivers.ceph" >> $CINDER_CONF
+  echo "backup_ceph_conf = /etc/ceph/ceph.conf" >> $CINDER_CONF
+  echo "backup_ceph_user = cinder-backup" >> $CINDER_CONF
+  echo "backup_ceph_chunk_size = 134217728" >> $CINDER_CONF
+  echo "backup_ceph_pool = backups" >> $CINDER_CONF
+  echo "backup_ceph_stripe_unit = 0" >> $CINDER_CONF
+  echo "backup_ceph_stripe_count = 0" >> $CINDER_CONF
+  echo "restore_discard_excess_bytes = true" >> $CINDER_CONF
+  echo "" >> $CINDER_CONF
+  echo "rbd_user = cinder" >> $CINDER_CONF
+  echo "rbd_secret_uuid = $UUID" >> $CINDER_CONF
+fi
+
+echo "" >> $CINDER_CONF
+echo "[database]" >> $CINDER_CONF
+echo "connection = mysql+pymysql://cinder:$CINDER_DBPASS@$MYSQL_HOST/cinder" >> $CINDER_CONF
+
+echo "" >> $CINDER_CONF
+echo "[oslo_messaging_rabbit]" >> $CINDER_CONF
+echo "rabbit_host = $CONTROLLER_HOST" >> $CINDER_CONF
+echo "rabbit_userid = $RABBIT_USER" >> $CINDER_CONF
+echo "rabbit_password = $RABBIT_PASS" >> $CINDER_CONF
+
+echo "" >> $CINDER_CONF
+echo "[keystone_authtoken]" >> $CINDER_CONF
+echo "auth_uri = http://$CONTROLLER_HOST:5000" >> $CINDER_CONF
+echo "auth_url = http://$CONTROLLER_HOST:35357" >> $CINDER_CONF
+echo "auth_plugin = password" >> $CINDER_CONF
+echo "project_domain_id = default" >> $CINDER_CONF
+echo "user_domain_id = default" >> $CINDER_CONF
+echo "project_name = service" >> $CINDER_CONF
+echo "username = cinder" >> $CINDER_CONF
+echo "password = $CINDER_PASS" >> $CINDER_CONF
+
+echo "" >> $CINDER_CONF
+echo "[oslo_concurrency]" >> $CINDER_CONF
+echo "lock_path = /var/lib/cinder/tmp" >> $CINDER_CONF
+
+# Cinder service start
+if [[ $FORCE_INSTALL -eq 1 ]]; then
+  su -s /bin/sh -c "cinder-manage db sync" cinder
+fi
+
+service cinder-scheduler restart
+service cinder-api restart
 
 ## Nova setup
 echo 'Nova setup...'

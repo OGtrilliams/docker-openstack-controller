@@ -3,6 +3,7 @@ FROM ubuntu:14.04
 MAINTAINER EnnWeb Cloud <cloud@ennweb.com>
 
 ENV DEBIAN_FRONTEND noninteractive
+ENV STORE_BACKEND ceph
 ENV FORCE_INSTALL 1
 ENV CONTROLLER_HOST controller
 ENV HA_MODE L3_HA
@@ -28,6 +29,7 @@ ENV CINDER_PASS cinderpass
 ENV ADMIN_PASS adminpass
 ENV DEMO_PASS demopass
 ENV METADATA_SECRET metadatasecret
+ENV UUID b3d14bb5-b523-4f24-aa56-0ab3fac96dc6
 
 RUN \
   apt-get update && \
@@ -37,7 +39,7 @@ RUN \
   apt-get install -y python-openstackclient mariadb-server python-pymysql mongodb-server mongodb-clients python-pymongo \
     rabbitmq-server keystone apache2 libapache2-mod-wsgi memcached python-memcache glance python-glanceclient \
     nova-api nova-cert nova-conductor nova-consoleauth nova-novncproxy nova-scheduler python-novaclient neutron-server \
-    neutron-plugin-ml2 python-neutronclient openstack-dashboard && \
+    neutron-plugin-ml2 python-neutronclient cinder-api cinder-scheduler python-cinderclient openstack-dashboard && \
   apt-get remove -y --auto-remove openstack-dashboard-ubuntu-theme && \
   apt-get autoclean && \
   apt-get autoremove && \
