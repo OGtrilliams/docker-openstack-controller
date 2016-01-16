@@ -40,7 +40,7 @@ RUN \
     rabbitmq-server keystone apache2 libapache2-mod-wsgi memcached python-memcache glance python-glanceclient \
     nova-api nova-cert nova-conductor nova-consoleauth nova-novncproxy nova-scheduler python-novaclient neutron-server \
     neutron-plugin-ml2 python-neutronclient cinder-api cinder-scheduler cinder-backup cinder-volume python-cinderclient \
-    python-rbd ceph-common openstack-dashboard && \
+    python-rbd python-ceph ceph-common openstack-dashboard && \
   apt-get remove -y --auto-remove openstack-dashboard-ubuntu-theme && \
   apt-get autoclean && \
   apt-get autoremove && \
