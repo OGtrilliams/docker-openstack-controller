@@ -27,7 +27,6 @@ ENV CINDER_PASS cinderpass
 ENV ADMIN_PASS adminpass
 ENV DEMO_PASS demopass
 ENV TIME_ZONE Europe/London
-ENV HA_MODE L3_HA
 ENV METADATA_SECRET metadatasecret
 ENV UUID b3d14bb5-b523-4f24-aa56-0ab3fac96dc6
 
@@ -39,8 +38,9 @@ RUN \
   apt-get install -y python-openstackclient mariadb-server python-pymysql mongodb-server mongodb-clients python-pymongo \
     rabbitmq-server keystone apache2 libapache2-mod-wsgi memcached python-memcache glance python-glanceclient \
     nova-api nova-cert nova-conductor nova-consoleauth nova-novncproxy nova-scheduler python-novaclient neutron-server \
-    neutron-plugin-ml2 python-neutronclient cinder-api cinder-scheduler cinder-backup cinder-volume python-cinderclient \
-    python-rbd python-ceph ceph-common openstack-dashboard && \
+    neutron-plugin-ml2 neutron-l3-agent neutron-dhcp-agent neutron-metadata-agent python-neutronclient conntrack \
+    cinder-api cinder-scheduler cinder-backup cinder-volume python-cinderclient python-rbd python-ceph ceph-common \
+    openstack-dashboard && \
   apt-get remove -y --auto-remove openstack-dashboard-ubuntu-theme && \
   apt-get autoclean && \
   apt-get autoremove && \

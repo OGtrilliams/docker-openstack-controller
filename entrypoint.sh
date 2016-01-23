@@ -344,69 +344,79 @@ service nova-novncproxy restart
 
 ## Neutron Setup
 echo 'Neutron Setup...'
-NEUTRON_CONF=/etc/neutron/neutron.conf
-ML2_CONF=/etc/neutron/plugins/ml2/ml2_conf.ini
 
-### /etc/neutron/neutron.conf modify
-sed -i "s/^connection =.*/connection = mysql+pymysql:\/\/neutron:$NEUTRON_DBPASS@$MYSQL_HOST\/neutron/" $NEUTRON_CONF
-sed -i "s/^# rpc_backend=rabbit.*/rpc_backend=rabbit/" $NEUTRON_CONF
-sed -i "s/^# rabbit_host = localhost.*/rabbit_host=$CONTROLLER_HOST/" $NEUTRON_CONF
-sed -i "s/^# rabbit_userid = guest.*/rabbit_userid = $RABBIT_USER/" $NEUTRON_CONF
-sed -i "s/^# rabbit_password = guest.*/rabbit_password = $RABBIT_PASS/" $NEUTRON_CONF
-sed -i "s/^# auth_strategy = keystone.*/auth_strategy = keystone/" $NEUTRON_CONF
-sed -i "s/^auth_uri =.*/auth_uri = http:\/\/$CONTROLLER_HOST:5000/" $NEUTRON_CONF
-sed -i "s/^identity_uri =.*/auth_url = http:\/\/$CONTROLLER_HOST:35357/" $NEUTRON_CONF
-sed -i "s/^admin_tenant_name =.*/auth_plugin = password\nproject_domain_id = default\nuser_domain_id = default\nproject_name = service/" $NEUTRON_CONF
-sed -i "s/^admin_user =.*/username = neutron/" $NEUTRON_CONF
-sed -i "s/^admin_password =.*/password = $NEUTRON_PASS/" $NEUTRON_CONF
-sed -i "s/# notify_nova_on_port_status_changes.*/notify_nova_on_port_status_changes = True/" $NEUTRON_CONF
-sed -i "s/# notify_nova_on_port_data_changes.*/notify_nova_on_port_data_changes = True/" $NEUTRON_CONF
-sed -i "s/# nova_url.*/nova_url = http:\/\/$CONTROLLER_HOST:8774\/v2/" $NEUTRON_CONF
-sed -i "s/^\[nova\]/[nova]\n\nauth_url = http:\/\/$CONTROLLER_HOST:35357\nauth_plugin = password\nproject_domain_id = default\nuser_domain_id = default\nregion_name = $REGION_NAME\nproject_name = service\nusername = nova\npassword = $NOVA_PASS\n\n/" $NEUTRON_CONF
-sed -i "s/^# service_plugins.*/service_plugins = router/" $NEUTRON_CONF
-sed -i "s/# allow_overlapping_ips.*/allow_overlapping_ips = True/" $NEUTRON_CONF
+sed -i "\
+  s/^connection =.*/connection = mysql+pymysql:\/\/neutron:$NEUTRON_DBPASS@$MYSQL_HOST\/neutron/; \
+  s/^# rpc_backend=rabbit.*/rpc_backend=rabbit/; \
+  s/^# rabbit_host = localhost.*/rabbit_host=$CONTROLLER_HOST/; \
+  s/^# rabbit_userid = guest.*/rabbit_userid = $RABBIT_USER/; \
+  s/^# rabbit_password = guest.*/rabbit_password = $RABBIT_PASS/; \
+  s/^# auth_strategy = keystone.*/auth_strategy = keystone/; \
+  s/^auth_uri =.*/auth_uri = http:\/\/$CONTROLLER_HOST:5000/; \
+  s/^identity_uri =.*/auth_url = http:\/\/$CONTROLLER_HOST:35357/; \
+  s/^admin_tenant_name =.*/auth_plugin = password\nproject_domain_id = default\nuser_domain_id = default\nproject_name = service/; \
+  s/^admin_user =.*/username = neutron/; \
+  s/^admin_password =.*/password = $NEUTRON_PASS/; \
+  s/# notify_nova_on_port_status_changes.*/notify_nova_on_port_status_changes = True/; \
+  s/# notify_nova_on_port_data_changes.*/notify_nova_on_port_data_changes = True/; \
+  s/# nova_url.*/nova_url = http:\/\/$CONTROLLER_HOST:8774\/v2/; \
+  s/^\[nova\]/[nova]\n\nauth_url = http:\/\/$CONTROLLER_HOST:35357\nauth_plugin = password\nproject_domain_id = default\nuser_domain_id = default\nregion_name = $REGION_NAME\nproject_name = service\nusername = nova\npassword = $NOVA_PASS\n\n/; \
+  s/^# service_plugins.*/service_plugins = router/; \
+  s/# allow_overlapping_ips.*/allow_overlapping_ips = True/; \
+" /etc/neutron/neutron.conf
 
-# DVR Setup / L3 HA
-if [ "$HA_MODE" == "DVR" ]; then
-  sed -i "s/^# router_distributed.*/router_distributed = True/" $NEUTRON_CONF
-else
-  sed -i "s/^# router_distributed.*/router_distributed = False/" $NEUTRON_CONF
-  sed -i "s/^# l3_ha = False.*/l3_ha = True/" $NEUTRON_CONF
-  sed -i "s/^# max_l3_agents_per_router.*/max_l3_agents_per_router = 0/" $NEUTRON_CONF
-fi
+sed -i "\
+  s/# type_drivers.*/type_drivers = flat,vlan,vxlan/; \
+  s/# tenant_network_types.*/tenant_network_types = vxlan/; \
+  s/# mechanism_drivers.*/mechanism_drivers = linuxbridge,l2population/; \
+  s/# extension_drivers.*/extension_drivers = port_security/; \
+  s/# flat_networks.*/flat_networks = public/; \
+  s/# vni_ranges.*/vni_ranges = 1:1000/; \
+  s/# enable_ipset.*/enable_ipset = True/; \
+" /etc/neutron/plugins/ml2/ml2_conf.ini
 
-# L3 Agent Failover
-sed -i "s/^# allow_automatic_l3agent_failover.*/allow_automatic_l3agent_failover = True/" $NEUTRON_CONF
+sed -i "\
+  s/# interface_driver = neutron.agent.linux.interface.BridgeInterfaceDriver/interface_driver = neutron.agent.linux.interface.BridgeInterfaceDriver/; \
+  s/# external_network_bridge.*/external_network_bridge =/; \
+" /etc/neutron/l3_agent.ini
 
-### /etc/neutron/plugin/ml2/ml2_conf.ini modify
-sed -i "s/# type_drivers.*/type_drivers = flat,vxlan/" $ML2_CONF
-sed -i "s/# tenant_network_types.*/tenant_network_types = vxlan/" $ML2_CONF
-sed -i "s/# mechanism_drivers.*/mechanism_drivers = openvswitch,l2population/" $ML2_CONF
-sed -i "s/# vni_ranges.*/vni_ranges = 1:1000/" $ML2_CONF
-sed -i "s/# vxlan_group.*/vxlan_group = 239.1.1.1/" $ML2_CONF
-sed -i "s/# enable_security_group.*/enable_security_group = True/" $ML2_CONF
-sed -i "s/# enable_ipset.*/enable_ipset = True/" $ML2_CONF
-echo "firewall_driver = neutron.agent.linux.iptables_firewall.OVSHybridIptablesFirewallDriver" >> $ML2_CONF
+sed -i "\
+  s/# interface_driver = neutron.agent.linux.interface.BridgeInterfaceDriver/interface_driver = neutron.agent.linux.interface.BridgeInterfaceDriver/; \
+  s/# dhcp_driver.*/dhcp_driver = neutron.agent.linux.dhcp.Dnsmasq/; \
+  s/# enable_isolated_metadata.*/enable_isolated_metadata = True/; \
+  s/# dnsmasq_config_file.*/dnsmasq_config_file = \/etc\/neutron\/dnsmasq-neutron.conf/; \
+" /etc/neutron/dhcp_agent.ini
+
+echo "dhcp-option-force=26,1450" > /etc/neutron/dnsmasq-neutron.conf
+
+sed -i "\
+  s/^auth_url.*/auth_url = http:\/\/$CONTROLLER_HOST:5000\/v2.0/; \
+  s/^auth_region.*/auth_region = $REGION_NAME/; \
+  s/^admin_tenant_name.*/admin_tenant_name = service/; \
+  s/^admin_user.*/admin_user = neutron/; \
+  s/^admin_password.*/admin_password = $NEUTRON_PASS/; \
+  s/^# nova_metadata_ip.*/nova_metadata_ip = $CONTROLLER_HOST/; \
+  s/^# metadata_proxy_shared_secret.*/metadata_proxy_shared_secret = $METADATA_SECRET/; \
+" /etc/neutron/metadata_agent.ini
 
 if [ "$FORCE_INSTALL" == "yes" ]; then
-  su -s /bin/sh -c "neutron-db-manage --config-file $NEUTRON_CONF --config-file $ML2_CONF upgrade liberty" neutron
+  su -s /bin/sh -c "neutron-db-manage --config-file /etc/neutron/neutron.conf --config-file /etc/neutron/plugins/ml2/ml2_conf.ini upgrade head" neutron
 fi
 
 echo 'Neutron service starting...'
+service nova-api restart
 service neutron-server restart
+service neutron-dhcp-agent restart
+service neutron-metadata-agent restart
+service neutron-l3-agent restart
 
 ## Horizon Setup
 echo 'Horizon setup...'
-HORIZON_CONF=/etc/openstack-dashboard/local_settings.py
-sed -i "s/^OPENSTACK_HOST.*/OPENSTACK_HOST = \"$CONTROLLER_HOST\"/" $HORIZON_CONF
-sed -i "s/^OPENSTACK_KEYSTONE_DEFAULT_ROLE.*/OPENSTACK_KEYSTONE_DEFAULT_ROLE = \"user\"/" $HORIZON_CONF
-sed -i "s/enable_router': True/enable_router': False/" $HORIZON_CONF
-sed -i "s/enable_quotas': True/enable_quotas': False/" $HORIZON_CONF
-sed -i "s/enable_lb': True/enable_lb': False/" $HORIZON_CONF
-sed -i "s/enable_firewall': True/enable_firewall': False/" $HORIZON_CONF
-sed -i "s/enable_vpn': True/enable_vpn': False/" $HORIZON_CONF
-sed -i "s/enable_fip_topology_check': True/enable_fip_topology_check': False/" $HORIZON_CONF
-sed -i "s#^TIME_ZONE.*#TIME_ZONE = \"$TIME_ZONE\"#" $HORIZON_CONF
+sed -i "\
+  s/^OPENSTACK_HOST.*/OPENSTACK_HOST = \"$CONTROLLER_HOST\"/; \
+  s/^OPENSTACK_KEYSTONE_DEFAULT_ROLE.*/OPENSTACK_KEYSTONE_DEFAULT_ROLE = \"user\"/; \
+  s#^TIME_ZONE.*#TIME_ZONE = \"$TIME_ZONE\"#; \
+" /etc/openstack-dashboard/local_settings.py
 rm -rf /var/www/html/index.html
 sed -i "s#^</VirtualHost>#\n\t<Directory /var/www/html>\n\t\tOptions -Indexes\n\t\tAllowOverride All\n\t</Directory>\n\n</VirtualHost>#" /etc/apache2/sites-enabled/000-default.conf
 echo "RewriteEngine on" > /var/www/html/.htaccess
