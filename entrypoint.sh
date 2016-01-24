@@ -93,7 +93,10 @@ ln -s /etc/apache2/sites-available/wsgi-keystone.conf /etc/apache2/sites-enabled
 ## Horizon Setup
 echo 'Horizon setup...'
 sed -i "\
+  s/^TEMPLATE_DEBUG = DEBUG/TEMPLATE_DEBUG = DEBUG\n\nSITE_BRANDING = \"$SITE_BRANDING\"/; \
+  s/^#OPENSTACK_API_VERSIONS.*/OPENSTACK_API_VERSIONS = { \"identity\": 3 }\n#OPENSTACK_API_VERSIONS = {/; \
   s/^OPENSTACK_HOST.*/OPENSTACK_HOST = \"$CONTROLLER_HOST\"/; \
+  s/^OPENSTACK_KEYSTONE_URL.*/OPENSTACK_KEYSTONE_URL = \"http://%s:5000/v3\" % OPENSTACK_HOST/; \
   s/^OPENSTACK_KEYSTONE_DEFAULT_ROLE.*/OPENSTACK_KEYSTONE_DEFAULT_ROLE = \"user\"/; \
   s#^TIME_ZONE.*#TIME_ZONE = \"$TIME_ZONE\"#; \
 " /etc/openstack-dashboard/local_settings.py

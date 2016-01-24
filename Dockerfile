@@ -2,34 +2,36 @@ FROM ubuntu:14.04
 
 MAINTAINER EnnWeb Cloud <cloud@ennweb.com>
 
-ENV DEBIAN_FRONTEND noninteractive
-ENV FORCE_INSTALL no
-ENV STORE_BACKEND file
-ENV RABBIT_USER openstack
-ENV RABBIT_PASS rabbitpass
-ENV MYSQL_SETUP local
-ENV MYSQL_HOST controller
-ENV MYSQL_USER root
-ENV MYSQL_PASS mysqlpass
-ENV CONTROLLER_HOST controller
-ENV CONTROLLER_IP 0.0.0.0
-ENV ADMIN_TOKEN ADMIN
-ENV REGION_NAME RegionOne
-ENV KEYSTONE_DBPASS openstack
-ENV KEYSTONE_PASS keystonepass
-ENV GLANCE_DBPASS openstack
-ENV GLANCE_PASS glancepass
-ENV NOVA_DBPASS openstack
-ENV NOVA_PASS novapass
-ENV NEUTRON_DBPASS openstack
-ENV NEUTRON_PASS neutronpass
-ENV CINDER_DBPASS openstack
-ENV CINDER_PASS cinderpass
-ENV ADMIN_PASS adminpass
-ENV DEMO_PASS demopass
-ENV TIME_ZONE Europe/London
-ENV METADATA_SECRET metadatasecret
-ENV UUID b3d14bb5-b523-4f24-aa56-0ab3fac96dc6
+ENV \
+  DEBIAN_FRONTEND=noninteractive \
+  FORCE_INSTALL=no \
+  STORE_BACKEND=file \
+  SITE_BRANDING="Openstack Dashboard" \
+  RABBIT_USER=openstack \
+  RABBIT_PASS=rabbitpass \
+  MYSQL_SETUP=local \
+  MYSQL_HOST=controller \
+  MYSQL_USER=root \
+  MYSQL_PASS=mysqlpass \
+  CONTROLLER_HOST=controller \
+  CONTROLLER_IP=0.0.0.0 \
+  ADMIN_TOKEN=ADMIN \
+  REGION_NAME=RegionOne \
+  KEYSTONE_DBPASS=openstack \
+  KEYSTONE_PASS=keystonepass \
+  GLANCE_DBPASS=openstack \
+  GLANCE_PASS=glancepass \
+  NOVA_DBPASS=openstack \
+  NOVA_PASS=novapass \
+  NEUTRON_DBPASS=openstack \
+  NEUTRON_PASS=neutronpass \
+  CINDER_DBPASS=openstack \
+  CINDER_PASS=cinderpass \
+  ADMIN_PASS=adminpass \
+  DEMO_PASS=demopass \
+  TIME_ZONE=Europe/London \
+  METADATA_SECRET=metadatasecret \
+  UUID=b3d14bb5-b523-4f24-aa56-0ab3fac96dc6
 
 RUN \
   apt-get update && \
