@@ -12,6 +12,7 @@ ENV MYSQL_HOST controller
 ENV MYSQL_USER root
 ENV MYSQL_PASS mysqlpass
 ENV CONTROLLER_HOST controller
+ENV CONTROLLER_IP 0.0.0.0
 ENV ADMIN_TOKEN ADMIN
 ENV REGION_NAME RegionOne
 ENV KEYSTONE_DBPASS openstack
@@ -51,6 +52,6 @@ VOLUME ["/data"]
 ADD entrypoint.sh /
 ADD config/wsgi-keystone.conf /etc/apache2/sites-available/wsgi-keystone.conf
 
-EXPOSE 80 3306 5000 5672 6080 8774 8776 9292 9696 35357
+EXPOSE 80 3306 5000 5672 6080 8774 8775 8776 9292 9696 35357
 
 ENTRYPOINT ["/entrypoint.sh"]

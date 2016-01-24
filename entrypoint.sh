@@ -11,7 +11,7 @@ if [ "$MYSQL_SETUP" == "local" ]; then
   # Setup mysql
   sed -i "s/^datadir.*/datadir = \/data\/mysql/" /etc/mysql/my.cnf
   echo "[mysqld]" > /etc/mysql/conf.d/mysqld.cnf
-  echo "bind-address = 0.0.0.0" >> /etc/mysql/conf.d/mysqld.cnf
+  echo "bind-address = $CONTROLLER_IP" >> /etc/mysql/conf.d/mysqld.cnf
   echo "default-storage-engine = innodb" >> /etc/mysql/conf.d/mysqld.cnf
   echo "innodb_file_per_table" >> /etc/mysql/conf.d/mysqld.cnf
   echo "collation-server = utf8_general_ci" >> /etc/mysql/conf.d/mysqld.cnf
@@ -68,7 +68,7 @@ if [ "$FORCE_INSTALL" == "yes" ]; then
   mkdir -p /data/mongodb
   chown mongodb:mongodb /data/mongodb
   sed -i "s/^dbpath.*/dbpath=\/data\/mongodb/" /etc/mongodb.conf
-  # sed -i "s/^bind_ip.*/bind_ip = 0.0.0.0/" /etc/mongodb.conf
+  sed -i "s/^bind_ip.*/bind_ip = $CONTROLLER_IP/" /etc/mongodb.conf
   echo "smallfiles = true" >> /etc/mongodb.conf
 fi
 service mongodb start
@@ -89,6 +89,28 @@ if [ "$FORCE_INSTALL" == "yes" ]; then
 fi
 
 ln -s /etc/apache2/sites-available/wsgi-keystone.conf /etc/apache2/sites-enabled
+
+## Horizon Setup
+echo 'Horizon setup...'
+sed -i "\
+  s/^OPENSTACK_HOST.*/OPENSTACK_HOST = \"$CONTROLLER_HOST\"/; \
+  s/^OPENSTACK_KEYSTONE_DEFAULT_ROLE.*/OPENSTACK_KEYSTONE_DEFAULT_ROLE = \"user\"/; \
+  s#^TIME_ZONE.*#TIME_ZONE = \"$TIME_ZONE\"#; \
+" /etc/openstack-dashboard/local_settings.py
+rm -rf /var/www/html/index.html
+sed -i "\
+  s#^</VirtualHost>#\n\t<Directory /var/www/html>\n\t\tOptions -Indexes\n\t\tAllowOverride All\n\t</Directory>\n\n</VirtualHost>#; \
+  s/<VirtualHost.*/<VirtualHost $CONTROLLER_IP:80>/; \
+  s/#ServerName.*/ServerName $CONTROLLER_HOST/; \
+" /etc/apache2/sites-enabled/000-default.conf
+sed -i "\
+  s/Listen 80/Listen $CONTROLLER_IP:80/; \
+  s/Listen 443/Listen $CONTROLLER_IP:443/; \
+" /etc/apache2/ports.conf
+echo "RewriteEngine on" > /var/www/html/.htaccess
+echo "RewriteCond %{REQUEST_URI} ^/\$" >> /var/www/html/.htaccess
+echo "RewriteRule (.*) /horizon [R=301,L]" >> /var/www/html/.htaccess
+a2enmod rewrite
 service memcached restart
 service apache2 restart
 
@@ -304,8 +326,8 @@ echo "password = $NOVA_PASS" >> $NOVA_CONF
 echo "" >> $NOVA_CONF
 echo "[vnc]" >> $NOVA_CONF
 echo "enabled = True" >> $NOVA_CONF
-echo "vncserver_listen = 0.0.0.0" >> $NOVA_CONF
-echo "vncserver_proxyclient_address = $CONTROLLER_HOST" >> $NOVA_CONF
+echo "vncserver_listen = $CONTROLLER_IP" >> $NOVA_CONF
+echo "vncserver_proxyclient_address = $CONTROLLER_IP" >> $NOVA_CONF
 echo "novncproxy_base_url = http://$CONTROLLER_HOST:6080/vnc_auto.html" >> $NOVA_CONF
 
 echo "" >> $NOVA_CONF
@@ -409,21 +431,6 @@ service neutron-server restart
 service neutron-dhcp-agent restart
 service neutron-metadata-agent restart
 service neutron-l3-agent restart
-
-## Horizon Setup
-echo 'Horizon setup...'
-sed -i "\
-  s/^OPENSTACK_HOST.*/OPENSTACK_HOST = \"$CONTROLLER_HOST\"/; \
-  s/^OPENSTACK_KEYSTONE_DEFAULT_ROLE.*/OPENSTACK_KEYSTONE_DEFAULT_ROLE = \"user\"/; \
-  s#^TIME_ZONE.*#TIME_ZONE = \"$TIME_ZONE\"#; \
-" /etc/openstack-dashboard/local_settings.py
-rm -rf /var/www/html/index.html
-sed -i "s#^</VirtualHost>#\n\t<Directory /var/www/html>\n\t\tOptions -Indexes\n\t\tAllowOverride All\n\t</Directory>\n\n</VirtualHost>#" /etc/apache2/sites-enabled/000-default.conf
-echo "RewriteEngine on" > /var/www/html/.htaccess
-echo "RewriteCond %{REQUEST_URI} ^/\$" >> /var/www/html/.htaccess
-echo "RewriteRule (.*) /horizon [R=301,L]" >> /var/www/html/.htaccess
-a2enmod rewrite
-service apache2 restart
 
 ## Setup complete
 echo 'Setup complete!...'
