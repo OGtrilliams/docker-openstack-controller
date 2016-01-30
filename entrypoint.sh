@@ -388,41 +388,32 @@ sed -i "\
   s/^\[nova\]/[nova]\n\nauth_url = http:\/\/$CONTROLLER_HOST:35357\nauth_plugin = password\nproject_domain_id = default\nuser_domain_id = default\nregion_name = $REGION_NAME\nproject_name = service\nusername = nova\npassword = $NOVA_PASS\n\n/; \
   s/^# service_plugins.*/service_plugins = router/; \
   s/# allow_overlapping_ips.*/allow_overlapping_ips = True/; \
+  s/^# allow_automatic_l3agent_failover.*/allow_automatic_l3agent_failover = True/; \
 " /etc/neutron/neutron.conf
 
+if [ $HA_MODE == "DVR" ]; then
+  sed -i "s/^# router_distributed.*/router_distributed = True/" /etc/neutron/neutron.conf
+fi
+
+if [ $HA_MODE == "L3_HA" ]; then
+  sed -i "\
+    s/^# router_distributed.*/router_distributed = False/; \
+    s/^# l3_ha = False.*/l3_ha = True/; \
+    s/^# max_l3_agents_per_router.*/max_l3_agents_per_router = 0/; \
+  " /etc/neutron/neutron.conf
+fi
+
 sed -i "\
-  s/# type_drivers.*/type_drivers = flat,vlan,vxlan/; \
+  s/# type_drivers.*/type_drivers = flat,vxlan/; \
   s/# tenant_network_types.*/tenant_network_types = vxlan/; \
-  s/# mechanism_drivers.*/mechanism_drivers = linuxbridge,l2population/; \
+  s/# mechanism_drivers.*/mechanism_drivers = openvswitch,l2population/; \
   s/# extension_drivers.*/extension_drivers = port_security/; \
   s/# flat_networks.*/flat_networks = public/; \
   s/# vni_ranges.*/vni_ranges = 1:1000/; \
+  s/# vxlan_group.*/vxlan_group = 239.1.1.1/; \
+  s/# enable_security_group.*/enable_security_group = True/; \
   s/# enable_ipset.*/enable_ipset = True/; \
 " /etc/neutron/plugins/ml2/ml2_conf.ini
-
-sed -i "\
-  s/# interface_driver = neutron.agent.linux.interface.BridgeInterfaceDriver/interface_driver = neutron.agent.linux.interface.BridgeInterfaceDriver/; \
-  s/# external_network_bridge.*/external_network_bridge =/; \
-" /etc/neutron/l3_agent.ini
-
-sed -i "\
-  s/# interface_driver = neutron.agent.linux.interface.BridgeInterfaceDriver/interface_driver = neutron.agent.linux.interface.BridgeInterfaceDriver/; \
-  s/# dhcp_driver.*/dhcp_driver = neutron.agent.linux.dhcp.Dnsmasq/; \
-  s/# enable_isolated_metadata.*/enable_isolated_metadata = True/; \
-  s/# dnsmasq_config_file.*/dnsmasq_config_file = \/etc\/neutron\/dnsmasq-neutron.conf/; \
-" /etc/neutron/dhcp_agent.ini
-
-echo "dhcp-option-force=26,1450" > /etc/neutron/dnsmasq-neutron.conf
-
-sed -i "\
-  s/^auth_url.*/auth_url = http:\/\/$CONTROLLER_HOST:5000\/v2.0/; \
-  s/^auth_region.*/auth_region = $REGION_NAME/; \
-  s/^admin_tenant_name.*/admin_tenant_name = service/; \
-  s/^admin_user.*/admin_user = neutron/; \
-  s/^admin_password.*/admin_password = $NEUTRON_PASS/; \
-  s/^# nova_metadata_ip.*/nova_metadata_ip = $CONTROLLER_HOST/; \
-  s/^# metadata_proxy_shared_secret.*/metadata_proxy_shared_secret = $METADATA_SECRET/; \
-" /etc/neutron/metadata_agent.ini
 
 if [ "$FORCE_INSTALL" == "yes" ]; then
   su -s /bin/sh -c "neutron-db-manage --config-file /etc/neutron/neutron.conf --config-file /etc/neutron/plugins/ml2/ml2_conf.ini upgrade head" neutron
@@ -431,9 +422,7 @@ fi
 echo 'Neutron service starting...'
 service nova-api restart
 service neutron-server restart
-service neutron-dhcp-agent restart
-service neutron-metadata-agent restart
-service neutron-l3-agent restart
+
 
 ## Setup complete
 echo 'Setup complete!...'
