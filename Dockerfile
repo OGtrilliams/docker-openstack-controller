@@ -1,12 +1,12 @@
-FROM ubuntu:14.04
+cat Dockerfile 
+FROM centos:latest
 
-MAINTAINER EnnWeb Cloud <cloud@ennweb.com>
+MAINTAINER Treva Williams <tribecca@tribecc.us>
 
 ENV \
-  DEBIAN_FRONTEND=noninteractive \
   FORCE_INSTALL=no \
   STORE_BACKEND=file \
-  SITE_BRANDING="Openstack Dashboard" \
+  SITE_BRANDING="Cloud Assessments - Openstack Dashboard" \
   RABBIT_USER=openstack \
   RABBIT_PASS=rabbitpass \
   MYSQL_SETUP=local \
@@ -29,30 +29,17 @@ ENV \
   CINDER_PASS=cinderpass \
   ADMIN_PASS=adminpass \
   DEMO_PASS=demopass \
-  TIME_ZONE=Europe/London \
+  TIME_ZONE=America/Chicago \
   UUID=b3d14bb5-b523-4f24-aa56-0ab3fac96dc6 \
   METADATA_SECRET=metadatasecret \
   HA_MODE=L3_HA
 
 RUN \
-  apt-get update && \
-  apt-get install -y software-properties-common && \
-  add-apt-repository  -y cloud-archive:liberty && \
-  apt-get update && apt-get -y dist-upgrade && \
-  apt-get install -y python-openstackclient mariadb-server python-pymysql mongodb-server mongodb-clients python-pymongo \
-    rabbitmq-server keystone apache2 libapache2-mod-wsgi memcached python-memcache glance python-glanceclient \
-    nova-api nova-cert nova-conductor nova-consoleauth nova-novncproxy nova-scheduler python-novaclient neutron-server \
-    neutron-plugin-ml2 python-neutronclient conntrack cinder-api cinder-scheduler cinder-backup cinder-volume python-cinderclient \
-    python-rbd python-ceph ceph-common openstack-dashboard && \
-  apt-get remove -y --auto-remove openstack-dashboard-ubuntu-theme && \
-  apt-get autoclean && \
-  apt-get autoremove && \
-  rm -rf /var/lib/apt/lists/*
+yum -y update && yum -y install centos-release-openstack-newton && yum -y install python-openstackclient mariadb-server python2-PyMySQL mongodb-server mongodb-clients python-pymongo rabbitmq-server openstack-keystone httpd memcached mod_wsgi python-memcached openstack-glance python2-glanceclient openstack-nova-api openstack-nova-cert openstack-nova-conductor openstack-nova-consoleauth openstack-nova-novncproxy openstack-nova-scheduler python2-novaclient openstack-neutron openstack-neutron-ml2 python2-neutronclient openstack-cinder-api openstack-cinder-scheduler openstack-cinder-backup openstack-cinder-volume python2-cinderclient python-rbd ceph ceph-common openstack-dashboard
 
 VOLUME ["/data"]
-
 ADD entrypoint.sh /
-ADD config/wsgi-keystone.conf /etc/apache2/sites-available/wsgi-keystone.conf
+ADD config/wsgi-keystone.conf /usr/share/keystone/wsgi-keystone.conf
 
 EXPOSE 80 3306 5000 5672 6080 8774 8776 9292 9696 35357
 
